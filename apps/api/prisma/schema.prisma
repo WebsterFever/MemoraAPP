@@ -1,11 +1,3 @@
-// Memora database schema.
-//
-// Phase 1 intentionally defines no domain models yet — this file only
-// wires up the datasource/generator and enables the pgvector extension so
-// the local Postgres container and migration history are ready for it.
-// Domain models are added incrementally starting Phase 2 (see
-// docs/architecture/02-domain-model.md for the full target schema).
-
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions"]
@@ -17,13 +9,93 @@ datasource db {
   extensions = [vector]
 }
 
-/// Prisma requires at least one model to generate a client and run a
-/// migration. This one exists solely to prove the migration pipeline works
-/// end-to-end in Phase 1 (docker compose -> migrate dev -> generate) before
-/// any real domain model exists. Delete this model in the same PR that adds
-/// the first real model (User, in Phase 2) — see
-/// docs/architecture/02-domain-model.md for the target schema.
-model Placeholder {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
+enum UserStatus { ACTIVE DELETION_PENDING DELETED }
+enum FamilyRole { OWNER ADMIN CONTRIBUTOR VIEWER }
+enum MembershipStatus { INVITED ACTIVE REMOVED }
+enum ProfileStatus { ACTIVE CLAIMED DEACTIVATED DELETION_PENDING DELETED }
+enum ProfileRole { MEMORY_OWNER CONTRIBUTOR VIEWER }
+
+model User {
+  id                String   @id @default(uuid())
+  email             String   @unique
+  passwordHash      String
+  displayName       String
+  preferredLanguage String   @default("en")
+  status            UserStatus @default(ACTIVE)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  refreshTokens     RefreshToken[]
+  memberships       FamilyMembership[]
+  ownedFamilies     Family[] @relation("FamilyOwner")
+  createdProfiles   MemoryProfile[] @relation("ProfileCreator")
+  profilePermissions MemoryProfilePermission[] @relation("PermissionUser")
+  grantedPermissions MemoryProfilePermission[] @relation("PermissionGranter")
+}
+
+model RefreshToken {
+  id          String   @id @default(uuid())
+  userId      String
+  tokenHash   String   @unique
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  deviceInfo  String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model Family {
+  id          String   @id @default(uuid())
+  name        String
+  ownerUserId String
+  createdAt   DateTime @default(now())
+  owner       User     @relation("FamilyOwner", fields: [ownerUserId], references: [id])
+  memberships FamilyMembership[]
+  profiles    MemoryProfile[]
+}
+
+model FamilyMembership {
+  id       String @id @default(uuid())
+  familyId String
+  userId   String
+  role     FamilyRole @default(CONTRIBUTOR)
+  status   MembershipStatus @default(ACTIVE)
+  joinedAt DateTime @default(now())
+  family   Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user     User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([familyId, userId])
+  @@index([userId])
+}
+
+model MemoryProfile {
+  id                String @id @default(uuid())
+  familyId          String
+  displayName       String
+  relationship      String?
+  preferredLanguage String @default("en")
+  spokenLanguages   String[] @default([])
+  biography         String?
+  status            ProfileStatus @default(ACTIVE)
+  createdByUserId   String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  family            Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdBy         User @relation("ProfileCreator", fields: [createdByUserId], references: [id])
+  permissions       MemoryProfilePermission[]
+  @@index([familyId])
+}
+
+model MemoryProfilePermission {
+  id              String @id @default(uuid())
+  profileId       String
+  userId          String
+  role            ProfileRole
+  grantedByUserId String
+  grantedAt       DateTime @default(now())
+  revokedAt       DateTime?
+  profile         MemoryProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  user            User @relation("PermissionUser", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy       User @relation("PermissionGranter", fields: [grantedByUserId], references: [id])
+  @@unique([profileId, userId])
+  @@index([userId])
 }
