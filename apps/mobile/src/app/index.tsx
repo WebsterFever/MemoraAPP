@@ -1,114 +1,17 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { api, Family } from '@/shared/api-client/api';
+import { useAuthStore } from '@/features/auth/auth-store';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useHealthQuery } from '@/shared/api-client/use-health-query';
-import {
-  HealthStatusBadge,
-  type HealthBadgeState,
-} from '@/shared/design-system/health-status-badge';
-
-function useHealthBadgeState(): HealthBadgeState {
-  const { data, isPending, isError } = useHealthQuery();
-  if (isPending) return 'loading';
-  if (isError) return 'error';
-  return data?.status === 'ok' ? 'ok' : 'degraded';
+export default function Home() {
+ const {token,user,hydrated,signOut}=useAuthStore(); const [families,setFamilies]=useState<Family[]>([]);
+ useEffect(()=>{if(hydrated&&!token)router.replace('/login'); if(token)api.families(token).then(setFamilies).catch(()=>{});},[hydrated,token]);
+ if(!hydrated||!token)return <View style={s.loading}><ActivityIndicator/></View>;
+ return <SafeAreaView style={s.safe}><ScrollView contentContainerStyle={s.content}><View style={s.header}><View><Text style={s.eyebrow}>MEMORA</Text><Text style={s.title}>Hello, {user?.displayName}</Text></View><Pressable onPress={async()=>{await signOut();router.replace('/login')}}><Text style={s.logout}>Sign out</Text></Pressable></View>
+ <View style={s.hero}><Text style={s.heroTitle}>Every story deserves to be remembered.</Text><Text style={s.heroText}>Preserve the voices, moments and stories that make your family yours.</Text><Pressable style={s.primary} onPress={()=>router.push('/family')}><Text style={s.primaryText}>Manage family spaces</Text></Pressable></View>
+ <Text style={s.section}>Your family</Text>{families.length===0?<View style={s.card}><Text style={s.cardTitle}>Create your first family space</Text><Text style={s.muted}>A private home for the people and memories you care about.</Text><Pressable onPress={()=>router.push('/family')}><Text style={s.link}>Get started →</Text></Pressable></View>:families.map(f=><View key={f.id} style={s.card}><Text style={s.cardTitle}>{f.name}</Text><Text style={s.muted}>Ready for memories and profiles</Text></View>)}
+ <Text style={s.section}>Coming next</Text><View style={s.card}><Text style={s.cardTitle}>Memory timeline</Text><Text style={s.muted}>Photos, stories, voice and video will come together here in Phase 4.</Text></View></ScrollView></SafeAreaView>;
 }
-
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
-
-export default function HomeScreen() {
-  const healthState = useHealthBadgeState();
-
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Memora
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        <HealthStatusBadge state={healthState} />
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
-});
+const s=StyleSheet.create({loading:{flex:1,justifyContent:'center'},safe:{flex:1,backgroundColor:'#F7F3EC'},content:{padding:22,gap:16},header:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},eyebrow:{fontSize:12,fontWeight:'900',letterSpacing:2,color:'#8A6F5B'},title:{fontSize:28,fontWeight:'800',color:'#211B17',marginTop:4},logout:{color:'#765D4B',fontWeight:'700'},hero:{backgroundColor:'#5D493B',padding:24,borderRadius:24,gap:12},heroTitle:{fontSize:28,lineHeight:34,fontWeight:'800',color:'#FFF9F2'},heroText:{fontSize:16,lineHeight:23,color:'#E9DED4'},primary:{backgroundColor:'#FFF9F2',alignSelf:'flex-start',paddingHorizontal:18,paddingVertical:13,borderRadius:14,marginTop:5},primaryText:{color:'#5D493B',fontWeight:'800'},section:{fontSize:20,fontWeight:'800',color:'#211B17',marginTop:6},card:{backgroundColor:'#fff',padding:18,borderRadius:18,gap:7},cardTitle:{fontSize:18,fontWeight:'800',color:'#211B17'},muted:{color:'#786A61',lineHeight:21},link:{color:'#6B5545',fontWeight:'800',marginTop:5}});
