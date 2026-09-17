@@ -130,7 +130,7 @@ jobs:
         run: pnpm --filter @memora/api build
       - name: Start API and verify live database health
         run: |
-          node apps/api/dist/main.js > /tmp/memora-api.log 2>&1 &
+          pnpm --filter @memora/api start:prod > /tmp/memora-api.log 2>&1 &
           API_PID=$!
           trap 'kill $API_PID || true; cat /tmp/memora-api.log' EXIT
           for i in {1..30}; do
