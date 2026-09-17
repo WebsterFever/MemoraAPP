@@ -9,11 +9,38 @@ datasource db {
   extensions = [vector]
 }
 
-enum UserStatus { ACTIVE DELETION_PENDING DELETED }
-enum FamilyRole { OWNER ADMIN CONTRIBUTOR VIEWER }
-enum MembershipStatus { INVITED ACTIVE REMOVED }
-enum ProfileStatus { ACTIVE CLAIMED DEACTIVATED DELETION_PENDING DELETED }
-enum ProfileRole { MEMORY_OWNER CONTRIBUTOR VIEWER }
+enum UserStatus {
+  ACTIVE
+  DELETION_PENDING
+  DELETED
+}
+
+enum FamilyRole {
+  OWNER
+  ADMIN
+  CONTRIBUTOR
+  VIEWER
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  REMOVED
+}
+
+enum ProfileStatus {
+  ACTIVE
+  CLAIMED
+  DEACTIVATED
+  DELETION_PENDING
+  DELETED
+}
+
+enum ProfileRole {
+  MEMORY_OWNER
+  CONTRIBUTOR
+  VIEWER
+}
 
 model User {
   id                String   @id @default(uuid())
