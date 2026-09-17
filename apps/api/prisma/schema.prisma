@@ -1,0 +1,29 @@
+// Memora database schema.
+//
+// Phase 1 intentionally defines no domain models yet — this file only
+// wires up the datasource/generator and enables the pgvector extension so
+// the local Postgres container and migration history are ready for it.
+// Domain models are added incrementally starting Phase 2 (see
+// docs/architecture/02-domain-model.md for the full target schema).
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+/// Prisma requires at least one model to generate a client and run a
+/// migration. This one exists solely to prove the migration pipeline works
+/// end-to-end in Phase 1 (docker compose -> migrate dev -> generate) before
+/// any real domain model exists. Delete this model in the same PR that adds
+/// the first real model (User, in Phase 2) — see
+/// docs/architecture/02-domain-model.md for the target schema.
+model Placeholder {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+}

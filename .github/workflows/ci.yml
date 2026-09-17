@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Dummy connection strings — sufficient for `prisma generate` (which only
+# needs DATABASE_URL to be a syntactically valid value, not a reachable
+# database) and for the current health-check tests, which mock PrismaService
+# entirely. Real Postgres/Redis service containers get added once a later
+# phase introduces integration tests that need a live database (e.g. the
+# family/profile authorization tests — see
+# docs/architecture/10-testing-cicd-devex.md).
+env:
+  DATABASE_URL: postgresql://memora:memora@localhost:5432/memora_ci
+  REDIS_URL: redis://localhost:6379
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @memora/api prisma:generate
+      - run: pnpm lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @memora/api prisma:generate
+      - run: pnpm typecheck
+
+  test-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @memora/api prisma:generate
+      - run: pnpm --filter @memora/api test
+      - run: pnpm --filter @memora/api test:e2e
+
+  test-mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @memora/mobile test
+
+  build-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @memora/api prisma:generate
+      - run: pnpm --filter @memora/api build
+
+  build-mobile-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      # Web export is used as a fast, native-toolchain-free build check
+      # (catches bundler/module-resolution errors tsc alone wouldn't). Native
+      # Android/iOS builds via EAS are out of scope until Phase 16.
+      - run: pnpm --filter @memora/mobile build
