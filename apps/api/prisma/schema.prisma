@@ -57,6 +57,7 @@ model User {
   createdProfiles   MemoryProfile[] @relation("ProfileCreator")
   profilePermissions MemoryProfilePermission[] @relation("PermissionUser")
   grantedPermissions MemoryProfilePermission[] @relation("PermissionGranter")
+  createdMemories    Memory[] @relation("MemoryCreator")
 }
 
 model RefreshToken {
@@ -79,6 +80,7 @@ model Family {
   owner       User     @relation("FamilyOwner", fields: [ownerUserId], references: [id])
   memberships FamilyMembership[]
   profiles    MemoryProfile[]
+  memories    Memory[]
 }
 
 model FamilyMembership {
@@ -109,6 +111,7 @@ model MemoryProfile {
   family            Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
   createdBy         User @relation("ProfileCreator", fields: [createdByUserId], references: [id])
   permissions       MemoryProfilePermission[]
+  memories          Memory[]
   @@index([familyId])
 }
 
@@ -125,4 +128,21 @@ model MemoryProfilePermission {
   grantedBy       User @relation("PermissionGranter", fields: [grantedByUserId], references: [id])
   @@unique([profileId, userId])
   @@index([userId])
+}
+
+model Memory {
+  id              String   @id @default(uuid())
+  familyId        String
+  profileId       String?
+  title           String
+  story           String
+  occurredAt      DateTime?
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  family          Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  profile         MemoryProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  createdBy       User @relation("MemoryCreator", fields: [createdByUserId], references: [id])
+  @@index([familyId, occurredAt])
+  @@index([profileId])
 }
