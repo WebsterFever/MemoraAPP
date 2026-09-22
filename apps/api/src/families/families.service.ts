@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common"; import { PrismaService } from "../prisma/prisma.service"; import { CreateFamilyDto, CreateProfileDto } from "./dto";
+import { ForbiddenException, Injectable } from "@nestjs/common"; import { PrismaService } from "../prisma/prisma.service"; import { CreateFamilyDto, CreateProfileDto } from "./dto";
 @Injectable() export class FamiliesService {
  constructor(private prisma:PrismaService){}
  async create(userId:string,dto:CreateFamilyDto){return this.prisma.$transaction(async tx=>{const f=await tx.family.create({data:{name:dto.name,ownerUserId:userId}});await tx.familyMembership.create({data:{familyId:f.id,userId,role:"OWNER"}});return f;});}

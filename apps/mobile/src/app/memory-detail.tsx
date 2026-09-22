@@ -1,16 +1,17 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api, Memory } from '@/shared/api-client/api';
-import { useAuthStore } from '@/features/auth/auth-store';
+import { useAuthGuard } from '@/features/auth/use-auth-guard';
+import { confirmDestructive } from '@/shared/ui/confirm';
 
 export default function MemoryDetail(){
- const {id,familyId}=useLocalSearchParams<{id:string;familyId:string}>(); const token=useAuthStore(s=>s.token)!;
+ const {id,familyId}=useLocalSearchParams<{id:string;familyId:string}>(); const {token,ready}=useAuthGuard();
  const [memory,setMemory]=useState<Memory|null>(null); const [loading,setLoading]=useState(true);
- useEffect(()=>{if(!familyId)return;api.memories(token,familyId).then(xs=>setMemory(xs.find(x=>x.id===id)??null)).finally(()=>setLoading(false));},[id,familyId,token]);
- const remove=()=>Alert.alert('Delete memory?',"This action can't be undone.",[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:async()=>{if(!id)return;await api.deleteMemory(token,id);router.replace('/memories' as any);}}]);
- if(loading)return <View style={s.loading}><ActivityIndicator/></View>;
+ useEffect(()=>{if(!ready||!token||!familyId)return;api.memories(token,familyId).then(xs=>setMemory(xs.find(x=>x.id===id)??null)).finally(()=>setLoading(false));},[ready,id,familyId,token]);
+ const remove=async()=>{if(!token||!id)return;const confirmed=await confirmDestructive('Delete memory?',"This action can't be undone.");if(!confirmed)return;await api.deleteMemory(token,id);router.replace('/memories' as any);};
+ if(!ready||loading)return <View style={s.loading}><ActivityIndicator/></View>;
  if(!memory)return <SafeAreaView style={s.safe}><Pressable onPress={()=>router.replace('/memories' as any)}><Text style={s.back}>‹ Memories</Text></Pressable><Text style={s.title}>Memory not found</Text></SafeAreaView>;
  return <SafeAreaView style={s.safe}><ScrollView contentContainerStyle={s.content}><Pressable onPress={()=>router.replace('/memories' as any)}><Text style={s.back}>‹ Memories</Text></Pressable><Text style={s.date}>{memory.occurredAt?new Date(memory.occurredAt).toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'}):'Date not set'}</Text><Text style={s.title}>{memory.title}</Text>{memory.profile&&<Text style={s.person}>Remembering {memory.profile.displayName}</Text>}<View style={s.storyCard}><Text style={s.story}>{memory.story}</Text></View><View style={s.actions}><Pressable style={s.edit} onPress={()=>router.push({pathname:'/memory-edit' as any,params:{id:memory.id,familyId:memory.familyId}})}><Text style={s.editText}>Edit memory</Text></Pressable><Pressable style={s.delete} onPress={remove}><Text style={s.deleteText}>Delete</Text></Pressable></View></ScrollView></SafeAreaView>;
 }

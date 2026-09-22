@@ -11,7 +11,13 @@ services:
       POSTGRES_PASSWORD: memora
       POSTGRES_DB: memora_dev
     ports:
-      - "5432:5432"
+      # Mapped to 5433 on the host, not the default 5432 — this machine has
+      # a native (non-Docker) PostgreSQL service already bound to 5432,
+      # which silently intercepts host connections meant for this container
+      # (docker exec into the container still works fine on 5432 internally;
+      # only host->container connections collide). Update DATABASE_URL in
+      # apps/api/.env to match if you change this.
+      - "5433:5432"
     volumes:
       - memora_postgres_data:/var/lib/postgresql/data
     healthcheck:
