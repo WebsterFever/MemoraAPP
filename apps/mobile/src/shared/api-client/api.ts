@@ -6,8 +6,10 @@ export type User = { id: string; email: string; displayName: string; preferredLa
 export type AuthResponse = { user: User; accessToken: string; refreshToken: string };
 type RefreshResponse = { accessToken: string; refreshToken: string };
 export type Family = { id: string; name: string; ownerUserId: string; profiles?: MemoryProfile[] };
-export type Memory = { id: string; familyId: string; profileId?: string; title: string; story: string; occurredAt?: string; createdAt: string; updatedAt: string; profile?: MemoryProfile };
+export type Memory = { id: string; familyId: string; profileId?: string; title: string; story: string; occurredAt?: string; createdAt: string; updatedAt: string; profile?: MemoryProfile; mediaAssets?: MediaAsset[] };
 export type MemoryProfile = { id: string; familyId: string; displayName: string; relationship?: string; preferredLanguage: string; spokenLanguages: string[]; biography?: string; status: string };
+export type MediaAsset = { id: string; familyId: string; memoryId: string; uploadedByUserId: string; type: 'AUDIO'; storageProvider: 'S3'; mimeType: string; sizeBytes?: number; durationMs?: number; status: 'PENDING' | 'READY' | 'FAILED'; createdAt: string; updatedAt: string };
+export type CreateMediaUploadResponse = { mediaAssetId: string; uploadUrl: string; storageKey: string };
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => ({}));
@@ -125,4 +127,12 @@ export const api = {
     ),
   deleteMemory: (token: string, id: string) =>
     request<{ deleted: boolean }>(`/memories/${id}`, { method: 'DELETE' }, token),
+  createMediaUpload: (token: string, memoryId: string, body: { mimeType: string; sizeBytes: number; durationMs?: number }) =>
+    request<CreateMediaUploadResponse>(`/memories/${memoryId}/media`, { method: 'POST', body: JSON.stringify(body) }, token),
+  completeMediaUpload: (token: string, mediaAssetId: string) =>
+    request<MediaAsset>(`/media/${mediaAssetId}/complete`, { method: 'PATCH' }, token),
+  getPlaybackUrl: (token: string, mediaAssetId: string) =>
+    request<{ url: string }>(`/media/${mediaAssetId}/playback-url`, {}, token),
+  deleteMedia: (token: string, mediaAssetId: string) =>
+    request<{ deleted: boolean }>(`/media/${mediaAssetId}`, { method: 'DELETE' }, token),
 };

@@ -32,6 +32,13 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Memora to access your microphone to record voice memories.",
+          "enableBackgroundRecording": false
+        }
       ]
     ],
     "experiments": {

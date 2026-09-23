@@ -42,107 +42,162 @@ enum ProfileRole {
   VIEWER
 }
 
+enum MediaType {
+  AUDIO
+  // IMAGE and VIDEO are intentionally not added yet — Phase 4 is audio
+  // only. The storage/authorization architecture (MediaAsset, presigned
+  // URLs, StorageProvider abstraction) is designed to support them later
+  // without a schema rewrite.
+}
+
+enum MediaStorageProvider {
+  S3
+}
+
+enum MediaAssetStatus {
+  PENDING
+  READY
+  FAILED
+}
+
 model User {
-  id                String   @id @default(uuid())
-  email             String   @unique
-  passwordHash      String
-  displayName       String
-  preferredLanguage String   @default("en")
-  status            UserStatus @default(ACTIVE)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  refreshTokens     RefreshToken[]
-  memberships       FamilyMembership[]
-  ownedFamilies     Family[] @relation("FamilyOwner")
-  createdProfiles   MemoryProfile[] @relation("ProfileCreator")
+  id                 String                    @id @default(uuid())
+  email              String                    @unique
+  passwordHash       String
+  displayName        String
+  preferredLanguage  String                    @default("en")
+  status             UserStatus                @default(ACTIVE)
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  refreshTokens      RefreshToken[]
+  memberships        FamilyMembership[]
+  ownedFamilies      Family[]                  @relation("FamilyOwner")
+  createdProfiles    MemoryProfile[]           @relation("ProfileCreator")
   profilePermissions MemoryProfilePermission[] @relation("PermissionUser")
   grantedPermissions MemoryProfilePermission[] @relation("PermissionGranter")
-  createdMemories    Memory[] @relation("MemoryCreator")
+  createdMemories    Memory[]                  @relation("MemoryCreator")
+  uploadedMedia      MediaAsset[]              @relation("MediaUploader")
 }
 
 model RefreshToken {
-  id          String   @id @default(uuid())
-  userId      String
-  tokenHash   String   @unique
-  expiresAt   DateTime
-  revokedAt   DateTime?
-  deviceInfo  String?
-  createdAt   DateTime @default(now())
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String    @id @default(uuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  deviceInfo String?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }
 
 model Family {
-  id          String   @id @default(uuid())
+  id          String             @id @default(uuid())
   name        String
   ownerUserId String
-  createdAt   DateTime @default(now())
-  owner       User     @relation("FamilyOwner", fields: [ownerUserId], references: [id])
+  createdAt   DateTime           @default(now())
+  owner       User               @relation("FamilyOwner", fields: [ownerUserId], references: [id])
   memberships FamilyMembership[]
   profiles    MemoryProfile[]
   memories    Memory[]
+  mediaAssets MediaAsset[]
 }
 
 model FamilyMembership {
-  id       String @id @default(uuid())
+  id       String           @id @default(uuid())
   familyId String
   userId   String
-  role     FamilyRole @default(CONTRIBUTOR)
+  role     FamilyRole       @default(CONTRIBUTOR)
   status   MembershipStatus @default(ACTIVE)
-  joinedAt DateTime @default(now())
-  family   Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  user     User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt DateTime         @default(now())
+  family   Family           @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([familyId, userId])
   @@index([userId])
 }
 
 model MemoryProfile {
-  id                String @id @default(uuid())
+  id                String                    @id @default(uuid())
   familyId          String
   displayName       String
   relationship      String?
-  preferredLanguage String @default("en")
-  spokenLanguages   String[] @default([])
+  preferredLanguage String                    @default("en")
+  spokenLanguages   String[]                  @default([])
   biography         String?
-  status            ProfileStatus @default(ACTIVE)
+  status            ProfileStatus             @default(ACTIVE)
   createdByUserId   String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  family            Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  createdBy         User @relation("ProfileCreator", fields: [createdByUserId], references: [id])
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  family            Family                    @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdBy         User                      @relation("ProfileCreator", fields: [createdByUserId], references: [id])
   permissions       MemoryProfilePermission[]
   memories          Memory[]
+
   @@index([familyId])
 }
 
 model MemoryProfilePermission {
-  id              String @id @default(uuid())
+  id              String        @id @default(uuid())
   profileId       String
   userId          String
   role            ProfileRole
   grantedByUserId String
-  grantedAt       DateTime @default(now())
+  grantedAt       DateTime      @default(now())
   revokedAt       DateTime?
   profile         MemoryProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  user            User @relation("PermissionUser", fields: [userId], references: [id], onDelete: Cascade)
-  grantedBy       User @relation("PermissionGranter", fields: [grantedByUserId], references: [id])
+  user            User          @relation("PermissionUser", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy       User          @relation("PermissionGranter", fields: [grantedByUserId], references: [id])
+
   @@unique([profileId, userId])
   @@index([userId])
 }
 
 model Memory {
-  id              String   @id @default(uuid())
+  id              String         @id @default(uuid())
   familyId        String
   profileId       String?
   title           String
   story           String
   occurredAt      DateTime?
   createdByUserId String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  family          Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  family          Family         @relation(fields: [familyId], references: [id], onDelete: Cascade)
   profile         MemoryProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
-  createdBy       User @relation("MemoryCreator", fields: [createdByUserId], references: [id])
+  createdBy       User           @relation("MemoryCreator", fields: [createdByUserId], references: [id])
+  mediaAssets     MediaAsset[]
+
   @@index([familyId, occurredAt])
   @@index([profileId])
+}
+
+/// A single stored media file (audio in Phase 4; photo/video in later
+/// phases) attached to a Memory. The object itself lives in S3 (or another
+/// StorageProvider implementation later) — this row is only metadata plus
+/// the server-generated storage key. `status` tracks the presigned-upload
+/// lifecycle: PENDING until the client's S3 PUT completes and the backend
+/// independently verifies the object (see MediaService.completeUpload),
+/// READY once verified, FAILED if verification fails (object is deleted).
+model MediaAsset {
+  id               String               @id @default(uuid())
+  familyId         String
+  memoryId         String
+  uploadedByUserId String
+  type             MediaType
+  storageProvider  MediaStorageProvider @default(S3)
+  storageKey       String               @unique
+  mimeType         String
+  sizeBytes        Int?
+  durationMs       Int?
+  status           MediaAssetStatus     @default(PENDING)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  family           Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  memory           Memory               @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  uploadedBy       User                 @relation("MediaUploader", fields: [uploadedByUserId], references: [id])
+
+  @@index([memoryId])
+  @@index([familyId])
 }
