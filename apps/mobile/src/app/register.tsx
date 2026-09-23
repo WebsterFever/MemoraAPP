@@ -7,7 +7,7 @@ import { useAuthStore } from '@/features/auth/auth-store';
 
 export default function Register() {
  const signIn=useAuthStore(s=>s.signIn); const [name,setName]=useState(''); const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [error,setError]=useState(''); const [loading,setLoading]=useState(false);
- const submit=async()=>{setError('');setLoading(true);try{const r=await api.register(name.trim(),email.trim(),password);await signIn(r.accessToken,r.user);router.replace('/' as any);}catch(e){setError(e instanceof Error?e.message:'Unable to register');}finally{setLoading(false);}};
+ const submit=async()=>{setError('');setLoading(true);try{const r=await api.register(name.trim(),email.trim(),password);await signIn(r.accessToken,r.refreshToken,r.user);router.replace('/' as any);}catch(e){setError(e instanceof Error?e.message:'Unable to register');}finally{setLoading(false);}};
  return <SafeAreaView style={s.safe}><KeyboardAvoidingView style={s.flex} behavior={Platform.OS==='ios'?'padding':'height'}><ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
  <Pressable style={s.back} onPress={()=>router.canGoBack()?router.back():router.replace('/login' as any)}><Text style={s.backText}>‹ Back</Text></Pressable>
  <View style={s.card}><Text style={s.brand}>Memora</Text><Text style={s.title}>Create your account</Text><Text style={s.sub}>Start a private space for your family&apos;s stories.</Text>

@@ -8,7 +8,7 @@ import { useAuthStore } from '@/features/auth/auth-store';
 export default function Login() {
   const signIn = useAuthStore(s => s.signIn);
   const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [error,setError]=useState(''); const [loading,setLoading]=useState(false);
-  const submit=async()=>{ setError(''); setLoading(true); try { const r=await api.login(email.trim(),password); await signIn(r.accessToken,r.user); router.replace('/' as any); } catch(e){ setError(e instanceof Error?e.message:'Unable to sign in'); } finally { setLoading(false); }};
+  const submit=async()=>{ setError(''); setLoading(true); try { const r=await api.login(email.trim(),password); await signIn(r.accessToken,r.refreshToken,r.user); router.replace('/' as any); } catch(e){ setError(e instanceof Error?e.message:'Unable to sign in'); } finally { setLoading(false); }};
   return <SafeAreaView style={s.safe}><KeyboardAvoidingView style={s.flex} behavior={Platform.OS==='ios'?'padding':'height'}><ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
     <Pressable style={s.back} onPress={()=>router.canGoBack()?router.back():router.replace('/' as any)}><Text style={s.backText}>‹ Back</Text></Pressable>
     <View style={s.card}><Text style={s.brand}>Memora</Text><Text style={s.title}>Welcome back</Text><Text style={s.sub}>Sign in to continue preserving what matters.</Text>
