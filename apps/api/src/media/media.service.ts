@@ -76,7 +76,16 @@ export class MediaService {
       throw new BadRequestException("Upload not found in storage yet — finish the S3 upload before completing.");
     }
 
-    const validMimeType = (ALLOWED_AUDIO_MIME_TYPES as readonly string[]).includes(uploaded.contentType ?? "");
+    // React Native / Expo uploads can be stored by S3 as application/octet-stream
+    // even when the presigned request was created for a known audio type. The API
+    // already validated the requested MIME type before issuing the private,
+    // one-object upload URL, so completion validates the stored size and accepts
+    // either an audio Content-Type or S3's generic binary fallback.
+    const storedContentType = (uploaded.contentType ?? "").toLowerCase();
+    const validMimeType =
+      (ALLOWED_AUDIO_MIME_TYPES as readonly string[]).includes(storedContentType) ||
+      storedContentType === "application/octet-stream" ||
+      storedContentType === "";
     const withinSizeLimit = uploaded.sizeBytes > 0 && uploaded.sizeBytes <= MAX_AUDIO_SIZE_BYTES;
 
     if (!validMimeType || !withinSizeLimit) {
