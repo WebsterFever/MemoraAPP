@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api, Memory } from '@/shared/api-client/api';
 import { useAuthGuard } from '@/features/auth/use-auth-guard';
+import { useAudioPlayer } from 'expo-audio';
 
 type ChatItem = { id: string; side: 'me' | 'person'; text: string; memory?: Memory };
 
@@ -18,6 +19,8 @@ export default function PersonChat() {
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
+  const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
+  const player = useAudioPlayer(playbackUrl ?? undefined);
 
   const personMemories = useMemo(
     () => memories.filter(memory => memory.profileId === profileId),
@@ -67,7 +70,8 @@ export default function PersonChat() {
     const audio = memory.mediaAssets?.find(asset => asset.status === 'READY');
     if (!audio || !token) return;
     const { url } = await api.getPlaybackUrl(token, audio.id);
-    router.push({ pathname: '/memory-audio-player' as any, params: { url, name, title: memory.title } });
+    setPlaybackUrl(url);
+    setTimeout(() => player.play(), 0);
   };
 
   if (!ready || loading) return <View style={s.loading}><ActivityIndicator /></View>;
