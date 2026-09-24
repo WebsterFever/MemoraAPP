@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useAudioPlayer } from 'expo-audio';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api, Memory } from '@/shared/api-client/api';
@@ -21,6 +21,7 @@ export default function PersonChat() {
   const [loading, setLoading] = useState(true);
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
   const player = useAudioPlayer(playbackUrl ?? undefined);
+  const playerStatus = useAudioPlayerStatus(player);
   const scrollRef = useRef<ScrollView>(null);
 
   const personMemories = useMemo(
@@ -78,12 +79,19 @@ export default function PersonChat() {
   };
 
   const playMemory = async (memory: Memory) => {
-    const audio = memory.mediaAssets?.find(asset => asset.status === 'READY');
+    const audio = memory.mediaAssets?.find(asset => asset.type === 'AUDIO' && asset.status === 'READY');
     if (!audio || !token) return;
     const { url } = await api.getPlaybackUrl(token, audio.id);
+    // Updating the source is asynchronous in expo-audio. Playback is started
+    // by the effect below only after the native player has loaded the new URL.
     setPlaybackUrl(url);
-    setTimeout(() => player.play(), 0);
   };
+
+  useEffect(() => {
+    if (!playbackUrl || !playerStatus.isLoaded) return;
+    player.seekTo(0);
+    player.play();
+  }, [playbackUrl, playerStatus.isLoaded, player]);
 
   if (!ready || loading) return <View style={s.loading}><ActivityIndicator /></View>;
 
