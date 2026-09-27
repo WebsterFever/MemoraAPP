@@ -12,8 +12,8 @@ export default function Login() {
   return <SafeAreaView style={s.safe}><KeyboardAvoidingView style={s.flex} behavior={Platform.OS==='ios'?'padding':'height'}><ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
     <Pressable style={s.back} onPress={()=>router.canGoBack()?router.back():router.replace('/' as any)}><Text style={s.backText}>‹ Back</Text></Pressable>
     <View style={s.card}><Text style={s.brand}>Memora</Text><Text style={s.title}>Welcome back</Text><Text style={s.sub}>Sign in to continue preserving what matters.</Text>
-    <TextInput style={s.input} placeholder="Email" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail}/>
-    <TextInput style={s.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword}/>
+    <TextInput style={s.input} placeholder="Email" placeholderTextColor="#8A7B70" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail}/>
+    <TextInput style={s.input} placeholder="Password" placeholderTextColor="#8A7B70" secureTextEntry value={password} onChangeText={setPassword}/>
     {!!error&&<Text style={s.error}>{error}</Text>}<Pressable style={s.button} onPress={submit} disabled={loading}>{loading?<ActivityIndicator color="#fff"/>:<Text style={s.buttonText}>Sign in</Text>}</Pressable>
     <Text style={s.footer}>New to Memora? <Link href={"/register" as any} style={s.link}>Create account</Link></Text></View>
   </ScrollView></KeyboardAvoidingView></SafeAreaView>;

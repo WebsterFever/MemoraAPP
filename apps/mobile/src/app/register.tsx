@@ -11,7 +11,7 @@ export default function Register() {
  return <SafeAreaView style={s.safe}><KeyboardAvoidingView style={s.flex} behavior={Platform.OS==='ios'?'padding':'height'}><ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
  <Pressable style={s.back} onPress={()=>router.canGoBack()?router.back():router.replace('/login' as any)}><Text style={s.backText}>‹ Back</Text></Pressable>
  <View style={s.card}><Text style={s.brand}>Memora</Text><Text style={s.title}>Create your account</Text><Text style={s.sub}>Start a private space for your family&apos;s stories.</Text>
- <TextInput style={s.input} placeholder="Your name" value={name} onChangeText={setName}/><TextInput style={s.input} placeholder="Email" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail}/><TextInput style={s.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword}/>
+ <TextInput style={s.input} placeholder="Your name" placeholderTextColor="#8A7B70" value={name} onChangeText={setName}/><TextInput style={s.input} placeholder="Email" placeholderTextColor="#8A7B70" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail}/><TextInput style={s.input} placeholder="Password" placeholderTextColor="#8A7B70" secureTextEntry value={password} onChangeText={setPassword}/>
  {!!error&&<Text style={s.error}>{error}</Text>}<Pressable style={s.button} onPress={submit} disabled={loading}>{loading?<ActivityIndicator color="#fff"/>:<Text style={s.buttonText}>Create account</Text>}</Pressable><Text style={s.footer}>Already have an account? <Link href={"/login" as any} style={s.link}>Sign in</Link></Text></View>
  </ScrollView></KeyboardAvoidingView></SafeAreaView>;
 }
