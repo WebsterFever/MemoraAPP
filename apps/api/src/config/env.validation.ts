@@ -15,6 +15,11 @@ export const envSchema = z.object({
   AWS_ACCESS_KEY_ID: z.string().optional(),
   AWS_SECRET_ACCESS_KEY: z.string().optional(),
   AWS_S3_BUCKET: z.string().optional(),
+  // Optional on purpose, same reasoning as the AWS_* block above: the API
+  // must boot and every non-transcription feature must keep working before
+  // an OpenAI key is configured. TranscriptionService checks this itself and
+  // fails only the specific transcription job, not the whole app.
+  OPENAI_API_KEY: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

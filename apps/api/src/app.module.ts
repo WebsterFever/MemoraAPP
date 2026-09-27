@@ -7,6 +7,8 @@ import { AuthModule } from "./auth/auth.module";
 import { FamiliesModule } from "./families/families.module";
 import { MemoriesModule } from "./memories/memories.module";
 import { MediaModule } from "./media/media.module";
+import { QueueModule } from "./queue/queue.module";
+import { TranscriptionModule } from "./transcription/transcription.module";
 
 @Module({
   imports: [
@@ -16,7 +18,9 @@ import { MediaModule } from "./media/media.module";
     AuthModule,
     FamiliesModule,
     MemoriesModule,
+    QueueModule,
     MediaModule,
+    TranscriptionModule,
   ],
 })
 export class AppModule {}

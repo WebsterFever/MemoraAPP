@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { MediaService } from "./media.service";
 import type { StorageProvider } from "./storage/storage-provider";
+import type { TranscriptionService } from "../transcription/transcription.service";
 
 function makePrismaStub() {
   return {
@@ -21,18 +22,24 @@ function makeStorageStub(): jest.Mocked<StorageProvider> {
   };
 }
 
+function makeTranscriptionStub(): jest.Mocked<TranscriptionService> {
+  return { enqueueForMediaAsset: jest.fn().mockResolvedValue(undefined) } as never;
+}
+
 const ACTIVE_CONTRIBUTOR = { status: "ACTIVE", role: "CONTRIBUTOR" };
 const ACTIVE_VIEWER = { status: "ACTIVE", role: "VIEWER" };
 
 describe("MediaService", () => {
   let prisma: ReturnType<typeof makePrismaStub>;
   let storage: jest.Mocked<StorageProvider>;
+  let transcription: jest.Mocked<TranscriptionService>;
   let service: MediaService;
 
   beforeEach(() => {
     prisma = makePrismaStub();
     storage = makeStorageStub();
-    service = new MediaService(prisma as never, storage);
+    transcription = makeTranscriptionStub();
+    service = new MediaService(prisma as never, storage, transcription);
   });
 
   describe("createUpload", () => {
@@ -114,7 +121,7 @@ describe("MediaService", () => {
       prisma.mediaAsset.findUnique.mockResolvedValue({ id: "asset-1", familyId: "fam-1", storageKey: "k" });
       prisma.familyMembership.findUnique.mockResolvedValue(ACTIVE_CONTRIBUTOR);
       storage.headObject.mockResolvedValue({ sizeBytes: 54321, contentType: "audio/mp4" });
-      prisma.mediaAsset.update.mockResolvedValue({ id: "asset-1", status: "READY", sizeBytes: 54321 });
+      prisma.mediaAsset.update.mockResolvedValue({ id: "asset-1", memoryId: "mem-1", status: "READY", sizeBytes: 54321 });
 
       const result = await service.completeUpload("user-1", "asset-1");
 
@@ -122,7 +129,33 @@ describe("MediaService", () => {
         where: { id: "asset-1" },
         data: { status: "READY", sizeBytes: 54321 },
       });
-      expect(result).toEqual({ id: "asset-1", status: "READY", sizeBytes: 54321 });
+      expect(result).toEqual({ id: "asset-1", memoryId: "mem-1", status: "READY", sizeBytes: 54321 });
+    });
+
+    it("enqueues transcription for the newly READY media asset without blocking the response", async () => {
+      prisma.mediaAsset.findUnique.mockResolvedValue({ id: "asset-1", familyId: "fam-1", storageKey: "k" });
+      prisma.familyMembership.findUnique.mockResolvedValue(ACTIVE_CONTRIBUTOR);
+      storage.headObject.mockResolvedValue({ sizeBytes: 54321, contentType: "audio/mp4" });
+      prisma.mediaAsset.update.mockResolvedValue({ id: "asset-1", memoryId: "mem-1", status: "READY", sizeBytes: 54321 });
+
+      await service.completeUpload("user-1", "asset-1");
+
+      expect(transcription.enqueueForMediaAsset).toHaveBeenCalledWith("asset-1", "mem-1");
+    });
+
+    it("does not let a transcription enqueue failure surface to the caller", async () => {
+      prisma.mediaAsset.findUnique.mockResolvedValue({ id: "asset-1", familyId: "fam-1", storageKey: "k" });
+      prisma.familyMembership.findUnique.mockResolvedValue(ACTIVE_CONTRIBUTOR);
+      storage.headObject.mockResolvedValue({ sizeBytes: 54321, contentType: "audio/mp4" });
+      prisma.mediaAsset.update.mockResolvedValue({ id: "asset-1", memoryId: "mem-1", status: "READY", sizeBytes: 54321 });
+      transcription.enqueueForMediaAsset.mockRejectedValue(new Error("queue unavailable"));
+
+      await expect(service.completeUpload("user-1", "asset-1")).resolves.toEqual({
+        id: "asset-1",
+        memoryId: "mem-1",
+        status: "READY",
+        sizeBytes: 54321,
+      });
     });
   });
 

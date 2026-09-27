@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { STORAGE_PROVIDER, type StorageProvider } from "./storage/storage-provider";
 import { ALLOWED_AUDIO_MIME_TYPES, MAX_AUDIO_SIZE_BYTES, type CreateMediaUploadDto } from "./dto";
+import { TranscriptionService } from "../transcription/transcription.service";
 
 function extensionForMimeType(mimeType: string): string {
   switch (mimeType) {
@@ -28,6 +29,7 @@ export class MediaService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    private readonly transcription: TranscriptionService,
   ) {}
 
   /** Same membership/role check pattern used by FamiliesService/MemoriesService. */
@@ -100,10 +102,19 @@ export class MediaService {
     // sizeBytes is overwritten with the value S3 actually reports — the
     // client's declared value at createUpload time was only ever a hint
     // for the pre-upload size cap, never trusted for the stored record.
-    return this.prisma.mediaAsset.update({
+    const updated = await this.prisma.mediaAsset.update({
       where: { id: asset.id },
       data: { status: "READY", sizeBytes: uploaded.sizeBytes },
     });
+
+    // Fire-and-forget: transcription is a background pipeline stage (doc 06)
+    // and must never block or fail the upload-completion response. A queue
+    // failure here is logged, not surfaced to the mobile client.
+    this.transcription.enqueueForMediaAsset(updated.id, updated.memoryId).catch((error: unknown) => {
+      this.logger.warn(`Failed to enqueue transcription for media asset ${updated.id}: ${String(error)}`);
+    });
+
+    return updated;
   }
 
   async getPlaybackUrl(userId: string, mediaAssetId: string) {

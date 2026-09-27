@@ -60,6 +60,13 @@ enum MediaAssetStatus {
   FAILED
 }
 
+enum MemorySourceStatus {
+  PENDING
+  PROCESSING
+  TRANSCRIBED
+  FAILED
+}
+
 model User {
   id                 String                    @id @default(uuid())
   email              String                    @unique
@@ -168,6 +175,7 @@ model Memory {
   profile         MemoryProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
   createdBy       User           @relation("MemoryCreator", fields: [createdByUserId], references: [id])
   mediaAssets     MediaAsset[]
+  sources         MemorySource[]
 
   @@index([familyId, occurredAt])
   @@index([profileId])
@@ -197,7 +205,31 @@ model MediaAsset {
   family           Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
   memory           Memory               @relation(fields: [memoryId], references: [id], onDelete: Cascade)
   uploadedBy       User                 @relation("MediaUploader", fields: [uploadedByUserId], references: [id])
+  source           MemorySource?
 
   @@index([memoryId])
   @@index([familyId])
+}
+
+/// Phase 5: transcription output for an audio MediaAsset. One row per
+/// MediaAsset. The original audio in S3 (MediaAsset) is never modified by
+/// this or any later pipeline stage — transcripts are additive, linked data.
+/// `rawTranscript` is the verbatim STT output; `cleanedTranscript` is a
+/// separate, non-destructive cleanup pass (doc 06 stage 4) — raw is kept
+/// forever alongside it, never overwritten.
+model MemorySource {
+  id                String              @id @default(uuid())
+  mediaAssetId      String              @unique
+  memoryId          String
+  status            MemorySourceStatus  @default(PENDING)
+  detectedLanguage  String?
+  rawTranscript     String?
+  cleanedTranscript String?
+  errorMessage      String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  mediaAsset        MediaAsset          @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+  memory            Memory              @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+
+  @@index([memoryId])
 }
