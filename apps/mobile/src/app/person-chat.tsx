@@ -55,10 +55,11 @@ export default function PersonChat() {
       })
       .sort((a, b) => b.score - a.score);
 
-    // If there is only one saved memory for this person, it is useful
-    // context even when the wording of the question is different.
-    const match = ranked.find(item => item.score > 0)?.memory
-      ?? (personMemories.length === 1 ? personMemories[0] : undefined);
+    // Only ever answer with a memory that actually shares a word with the
+    // question — always falling back to the single saved memory (regardless
+    // of relevance) made the chat look like it answered questions it never
+    // matched, which is worse than an honest "I don't have that."
+    const match = ranked.find(item => item.score > 0)?.memory;
 
     const stamp = Date.now();
     setMessages(current => [
