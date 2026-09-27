@@ -8,7 +8,7 @@ import { useAuthStore } from '@/features/auth/auth-store';
 type Person = MemoryProfile & { familyName: string };
 
 export default function Home() {
-  const { token, user, hydrated, signOut } = useAuthStore();
+  const { token, hydrated, signOut } = useAuthStore();
   const [families, setFamilies] = useState<Family[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);

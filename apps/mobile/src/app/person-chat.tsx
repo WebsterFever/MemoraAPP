@@ -115,14 +115,14 @@ export default function PersonChat() {
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
         >
           <View style={s.personBubble}>
-            <Text style={s.bubbleText}>Hi. This is {name}'s memory space. Ask about something already recorded, or add a new memory and voice.</Text>
+            <Text style={s.bubbleText}>Hi. This is {name}&apos;s memory space. Ask about something already recorded, or add a new memory and voice.</Text>
           </View>
           {messages.map(message => (
             <View key={message.id} style={message.side === 'me' ? s.myBubble : s.personBubble}>
               <Text style={s.bubbleText}>{message.text}</Text>
               {message.memory?.mediaAssets?.some(asset => asset.status === 'READY') && (
                 <Pressable style={s.voiceButton} onPress={() => void playMemory(message.memory!)}>
-                  <Text style={s.voiceText}>▶ Play {name}'s recorded voice</Text>
+                  <Text style={s.voiceText}>▶ Play {name}&apos;s recorded voice</Text>
                 </Pressable>
               )}
             </View>
