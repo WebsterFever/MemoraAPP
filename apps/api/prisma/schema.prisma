@@ -67,6 +67,12 @@ enum MemorySourceStatus {
   FAILED
 }
 
+enum MemoryChunkStatus {
+  PENDING
+  EMBEDDED
+  FAILED
+}
+
 model User {
   id                 String                    @id @default(uuid())
   email              String                    @unique
@@ -100,15 +106,16 @@ model RefreshToken {
 }
 
 model Family {
-  id          String             @id @default(uuid())
-  name        String
-  ownerUserId String
-  createdAt   DateTime           @default(now())
-  owner       User               @relation("FamilyOwner", fields: [ownerUserId], references: [id])
-  memberships FamilyMembership[]
-  profiles    MemoryProfile[]
-  memories    Memory[]
-  mediaAssets MediaAsset[]
+  id           String             @id @default(uuid())
+  name         String
+  ownerUserId  String
+  createdAt    DateTime           @default(now())
+  owner        User               @relation("FamilyOwner", fields: [ownerUserId], references: [id])
+  memberships  FamilyMembership[]
+  profiles     MemoryProfile[]
+  memories     Memory[]
+  mediaAssets  MediaAsset[]
+  memoryChunks MemoryChunk[]
 }
 
 model FamilyMembership {
@@ -141,6 +148,7 @@ model MemoryProfile {
   createdBy         User                      @relation("ProfileCreator", fields: [createdByUserId], references: [id])
   permissions       MemoryProfilePermission[]
   memories          Memory[]
+  memoryChunks      MemoryChunk[]
 
   @@index([familyId])
 }
@@ -176,6 +184,7 @@ model Memory {
   createdBy       User           @relation("MemoryCreator", fields: [createdByUserId], references: [id])
   mediaAssets     MediaAsset[]
   sources         MemorySource[]
+  chunks          MemoryChunk[]
 
   @@index([familyId, occurredAt])
   @@index([profileId])
@@ -218,18 +227,65 @@ model MediaAsset {
 /// separate, non-destructive cleanup pass (doc 06 stage 4) — raw is kept
 /// forever alongside it, never overwritten.
 model MemorySource {
-  id                String              @id @default(uuid())
-  mediaAssetId      String              @unique
+  id                String             @id @default(uuid())
+  mediaAssetId      String             @unique
   memoryId          String
-  status            MemorySourceStatus  @default(PENDING)
+  status            MemorySourceStatus @default(PENDING)
   detectedLanguage  String?
   rawTranscript     String?
   cleanedTranscript String?
   errorMessage      String?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  mediaAsset        MediaAsset          @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
-  memory            Memory              @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  mediaAsset        MediaAsset         @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+  memory            Memory             @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  chunks            MemoryChunk[]
 
+  @@index([memoryId])
+}
+
+/// Phase 6: a semantically retrievable slice of a MemorySource's cleaned
+/// transcript. familyId/profileId are denormalized directly onto the chunk
+/// (not just reachable via memory/memorySource joins) so the authorization
+/// filter — family membership + profile permission — can be applied as a
+/// SQL predicate directly in the vector similarity query's WHERE clause
+/// (doc 02 §5, doc 04 §3 step 3), never as a post-filter on already-fetched
+/// rows. `status` mirrors the MediaAsset/MemorySource PENDING-lifecycle
+/// pattern: a chunk's text is written first (PENDING), then embedded
+/// (EMBEDDED) or marked FAILED by a later, separate pipeline stage — chunk
+/// rows are never re-derived or overwritten once EMBEDDED, matching the
+/// "never destroy the original source" rule extended to derived data.
+///
+/// `embedding` has no native Prisma scalar for pgvector's `vector` type, so
+/// it is declared Unsupported — Prisma's migration engine still emits the
+/// correct `vector(1536)` column from this declaration, but the column can
+/// only be written/read via $executeRaw/$queryRaw, never through the
+/// generated Prisma Client CRUD methods (create/update/findMany, etc.).
+/// 1536 dimensions matches OpenAI text-embedding-3-small (or
+/// text-embedding-3-large truncated via the `dimensions` param) — flagged
+/// for explicit confirmation before the embedding call is implemented,
+/// since changing it later requires re-embedding every existing chunk.
+model MemoryChunk {
+  id             String            @id @default(uuid())
+  memorySourceId String
+  memoryId       String
+  familyId       String
+  profileId      String?
+  chunkIndex     Int
+  text           String
+  status         MemoryChunkStatus @default(PENDING)
+  errorMessage   String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  embedding Unsupported("vector(1536)")?
+
+  memorySource MemorySource   @relation(fields: [memorySourceId], references: [id], onDelete: Cascade)
+  memory       Memory         @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  family       Family         @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  profile      MemoryProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+
+  @@unique([memorySourceId, chunkIndex])
+  @@index([familyId, profileId])
   @@index([memoryId])
 }
