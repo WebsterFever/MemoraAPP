@@ -1,13 +1,10 @@
 import { Module } from "@nestjs/common";
 import { PrismaModule } from "../prisma/prisma.module";
+import { EmbeddingModule } from "../embedding/embedding.module";
 import { SegmentationService } from "./segmentation.service";
 
-/**
- * Not yet imported anywhere: no consumer exists until the pipeline-wiring
- * step (triggering segmentation after a MemorySource becomes TRANSCRIBED).
- */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, EmbeddingModule],
   providers: [SegmentationService],
   exports: [SegmentationService],
 })

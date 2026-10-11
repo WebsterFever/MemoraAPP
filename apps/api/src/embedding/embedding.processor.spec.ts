@@ -1,0 +1,152 @@
+import type { Job } from "bullmq";
+import { EMBEDDING_DIMENSIONS } from "./openai-embedding.service";
+import { EmbeddingProcessor, sanitizeErrorMessage, type EmbedChunkJobData } from "./embedding.processor";
+import type { EmbeddingProvider } from "./embedding-provider";
+
+function makePrismaStub() {
+  return {
+    memoryChunk: {
+      findUnique: jest.fn(),
+      update: jest.fn().mockResolvedValue(undefined),
+    },
+    $executeRaw: jest.fn().mockResolvedValue(1),
+  };
+}
+
+function makeEmbeddingProviderStub(): jest.Mocked<EmbeddingProvider> {
+  return { embed: jest.fn() };
+}
+
+function makeJob(chunkId: string): Job<EmbedChunkJobData> {
+  return { data: { chunkId } } as Job<EmbedChunkJobData>;
+}
+
+function fakeVector(length = EMBEDDING_DIMENSIONS): number[] {
+  return Array.from({ length }, (_, i) => i * 0.0001);
+}
+
+describe("sanitizeErrorMessage", () => {
+  it("redacts an OpenAI-style API key embedded in an error message", () => {
+    const error = new Error("Request failed with key sk-abcdefghij1234567890ABCDEFGHIJ");
+    expect(sanitizeErrorMessage(error)).toBe("Request failed with key [redacted]");
+  });
+
+  it("redacts multiple keys if present", () => {
+    const error = new Error("sk-aaaaaaaaaaaaaaaa and sk-bbbbbbbbbbbbbbbb both failed");
+    expect(sanitizeErrorMessage(error)).toBe("[redacted] and [redacted] both failed");
+  });
+
+  it("leaves a message with no key-shaped substring untouched", () => {
+    expect(sanitizeErrorMessage(new Error("rate limit exceeded"))).toBe("rate limit exceeded");
+  });
+
+  it("truncates an excessively long message", () => {
+    const long = "x".repeat(1000);
+    const result = sanitizeErrorMessage(new Error(long));
+    expect(result.length).toBeLessThanOrEqual(501);
+    expect(result.endsWith("…")).toBe(true);
+  });
+
+  it("stringifies a non-Error thrown value", () => {
+    expect(sanitizeErrorMessage("plain string failure")).toBe("plain string failure");
+  });
+});
+
+describe("EmbeddingProcessor", () => {
+  let prisma: ReturnType<typeof makePrismaStub>;
+  let embeddingProvider: jest.Mocked<EmbeddingProvider>;
+  let processor: EmbeddingProcessor;
+
+  beforeEach(() => {
+    prisma = makePrismaStub();
+    embeddingProvider = makeEmbeddingProviderStub();
+    processor = new EmbeddingProcessor(prisma as never, embeddingProvider);
+  });
+
+  it("does nothing when the chunk no longer exists", async () => {
+    prisma.memoryChunk.findUnique.mockResolvedValue(null);
+    await processor.process(makeJob("missing-chunk"));
+    expect(embeddingProvider.embed).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it("skips an already-EMBEDDED chunk without calling the provider (idempotent retry/duplicate job)", async () => {
+    prisma.memoryChunk.findUnique.mockResolvedValue({ id: "chunk-1", text: "hello", status: "EMBEDDED" });
+    await processor.process(makeJob("chunk-1"));
+    expect(embeddingProvider.embed).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    expect(prisma.memoryChunk.update).not.toHaveBeenCalled();
+  });
+
+  it("re-attempts a FAILED chunk (not a terminal state) and succeeds, storing the vector and marking EMBEDDED", async () => {
+    prisma.memoryChunk.findUnique.mockResolvedValue({ id: "chunk-1", text: "hello", status: "FAILED" });
+    const vector = fakeVector();
+    embeddingProvider.embed.mockResolvedValue(vector);
+
+    await processor.process(makeJob("chunk-1"));
+
+    expect(embeddingProvider.embed).toHaveBeenCalledWith("hello");
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    const call = prisma.$executeRaw.mock.calls[0];
+    // Tagged-template call: (stringsArray, vectorLiteral, chunkId)
+    expect(call[1]).toBe(`[${vector.join(",")}]`);
+    expect(call[2]).toBe("chunk-1");
+    expect(prisma.memoryChunk.update).not.toHaveBeenCalled();
+  });
+
+  it("processes a PENDING chunk successfully", async () => {
+    prisma.memoryChunk.findUnique.mockResolvedValue({ id: "chunk-2", text: "Mom's recipe", status: "PENDING" });
+    const vector = fakeVector();
+    embeddingProvider.embed.mockResolvedValue(vector);
+
+    await processor.process(makeJob("chunk-2"));
+
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks the chunk FAILED with a sanitized message and rethrows when the provider fails", async () => {
+    prisma.memoryChunk.findUnique.mockResolvedValue({ id: "chunk-3", text: "hello", status: "PENDING" });
+    embeddingProvider.embed.mockRejectedValue(new Error("OpenAI rejected key sk-abcdefghij1234567890ABCDEFGHIJ"));
+
+    await expect(processor.process(makeJob("chunk-3"))).rejects.toThrow();
+
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    expect(prisma.memoryChunk.update).toHaveBeenCalledWith({
+      where: { id: "chunk-3" },
+      data: { status: "FAILED", errorMessage: "OpenAI rejected key [redacted]" },
+    });
+  });
+
+  it("rejects and marks FAILED instead of storing a wrong-dimension vector", async () => {
+    prisma.memoryChunk.findUnique.mockResolvedValue({ id: "chunk-4", text: "hello", status: "PENDING" });
+    embeddingProvider.embed.mockResolvedValue(fakeVector(512));
+
+    await expect(processor.process(makeJob("chunk-4"))).rejects.toThrow(
+      `Refusing to store embedding with 512 dimensions (expected ${EMBEDDING_DIMENSIONS}).`,
+    );
+
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    expect(prisma.memoryChunk.update).toHaveBeenCalledWith({
+      where: { id: "chunk-4" },
+      data: {
+        status: "FAILED",
+        errorMessage: `Refusing to store embedding with 512 dimensions (expected ${EMBEDDING_DIMENSIONS}).`,
+      },
+    });
+  });
+
+  it("running the same job twice after a successful embed is a safe no-op the second time (end-to-end idempotency)", async () => {
+    prisma.memoryChunk.findUnique.mockResolvedValueOnce({ id: "chunk-5", text: "hello", status: "PENDING" });
+    embeddingProvider.embed.mockResolvedValue(fakeVector());
+    await processor.process(makeJob("chunk-5"));
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+
+    // Simulate the chunk now being EMBEDDED in the database for a second,
+    // duplicate delivery of the same job id.
+    prisma.memoryChunk.findUnique.mockResolvedValueOnce({ id: "chunk-5", text: "hello", status: "EMBEDDED" });
+    await processor.process(makeJob("chunk-5"));
+
+    expect(embeddingProvider.embed).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+  });
+});

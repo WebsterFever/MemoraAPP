@@ -7,9 +7,16 @@ function makePrismaStub() {
     memoryChunk: {
       upsert: jest.fn().mockResolvedValue(undefined),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      // Defaults to no pending chunks so tests that don't care about the
+      // embedding-enqueue step don't need to stub it explicitly.
+      findMany: jest.fn().mockResolvedValue([]),
     },
     $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
   };
+}
+
+function makeEmbeddingServiceStub() {
+  return { enqueueForChunk: jest.fn().mockResolvedValue(undefined) };
 }
 
 const SOURCE_ID = "source-1";
@@ -35,11 +42,13 @@ function makeSource(cleanedTranscript: string | null, overrides: Partial<{ profi
 
 describe("SegmentationService", () => {
   let prisma: ReturnType<typeof makePrismaStub>;
+  let embeddingService: ReturnType<typeof makeEmbeddingServiceStub>;
   let service: SegmentationService;
 
   beforeEach(() => {
     prisma = makePrismaStub();
-    service = new SegmentationService(prisma as never);
+    embeddingService = makeEmbeddingServiceStub();
+    service = new SegmentationService(prisma as never, embeddingService as never);
   });
 
   it("throws NotFoundException when the MemorySource does not exist", async () => {
@@ -107,6 +116,31 @@ describe("SegmentationService", () => {
     expect(indexes.length).toBeGreaterThan(1);
   });
 
+  it("enqueues an embedding job for every chunk still PENDING after segmentation", async () => {
+    const text = "Short memory now.";
+    prisma.memorySource.findUnique.mockResolvedValue(makeSource(text));
+    prisma.memoryChunk.findMany.mockResolvedValue([{ id: "chunk-a" }, { id: "chunk-b" }]);
+
+    await service.segmentMemorySource(SOURCE_ID);
+
+    expect(prisma.memoryChunk.findMany).toHaveBeenCalledWith({
+      where: { memorySourceId: SOURCE_ID, status: "PENDING" },
+      select: { id: true },
+    });
+    expect(embeddingService.enqueueForChunk).toHaveBeenCalledTimes(2);
+    expect(embeddingService.enqueueForChunk).toHaveBeenCalledWith("chunk-a");
+    expect(embeddingService.enqueueForChunk).toHaveBeenCalledWith("chunk-b");
+  });
+
+  it("does not enqueue anything when there are no PENDING chunks (e.g. everything already EMBEDDED)", async () => {
+    prisma.memorySource.findUnique.mockResolvedValue(makeSource("Short memory."));
+    prisma.memoryChunk.findMany.mockResolvedValue([]);
+
+    await service.segmentMemorySource(SOURCE_ID);
+
+    expect(embeddingService.enqueueForChunk).not.toHaveBeenCalled();
+  });
+
   it("deletes stale trailing chunks left over from a previously longer transcript", async () => {
     const text = "Short memory now.";
     prisma.memorySource.findUnique.mockResolvedValue(makeSource(text));
@@ -118,22 +152,26 @@ describe("SegmentationService", () => {
     });
   });
 
-  it("is idempotent — rerunning on the same transcript issues the exact same upsert calls, never a duplicate create", async () => {
+  it("is idempotent — rerunning on the same transcript issues the exact same upsert calls, never a duplicate create, and re-enqueues embedding safely (dedup is EmbeddingService's job, see embedding.service.spec.ts)", async () => {
     const sentence = "Mom told me a long story about her childhood home. ";
     const text = sentence.repeat(50).trim();
     prisma.memorySource.findUnique.mockResolvedValue(makeSource(text));
+    prisma.memoryChunk.findMany.mockResolvedValue([{ id: "chunk-a" }, { id: "chunk-b" }]);
 
     await service.segmentMemorySource(SOURCE_ID);
     const firstRunCalls = JSON.parse(JSON.stringify(prisma.memoryChunk.upsert.mock.calls));
+    const firstRunEnqueueCount = embeddingService.enqueueForChunk.mock.calls.length;
 
     prisma.memoryChunk.upsert.mockClear();
     prisma.memoryChunk.deleteMany.mockClear();
+    embeddingService.enqueueForChunk.mockClear();
     prisma.memorySource.findUnique.mockResolvedValue(makeSource(text));
 
     await service.segmentMemorySource(SOURCE_ID);
     const secondRunCalls = JSON.parse(JSON.stringify(prisma.memoryChunk.upsert.mock.calls));
 
     expect(secondRunCalls).toEqual(firstRunCalls);
+    expect(embeddingService.enqueueForChunk.mock.calls.length).toBe(firstRunEnqueueCount);
     // Every upsert `where` targets a distinct chunkIndex — no duplicate
     // (memorySourceId, chunkIndex) pair was ever written in either run.
     const indexesPerRun = (calls: typeof firstRunCalls) =>

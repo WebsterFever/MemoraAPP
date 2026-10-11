@@ -5,14 +5,14 @@ import { PrismaService } from "../prisma/prisma.service";
 import { STORAGE_PROVIDER, type StorageProvider } from "../media/storage/storage-provider";
 import { TRANSCRIPTION_PROVIDER, type TranscriptionProvider } from "./transcription-provider";
 import { TRANSCRIPTION_QUEUE } from "./queue.constants";
+import { SegmentationService } from "../segmentation/segmentation.service";
 
 export type TranscribeJobData = { memorySourceId: string };
 
 /**
  * Stages 1–4 of the pipeline in docs/architecture/06-audio-pipeline-jobs-storage.md
  * (ingest, language detection, transcription, cleanup) collapsed into one
- * job — segmentation/extraction/embeddings are later phases, not started
- * here. The original audio (MediaAsset) is never read/write-modified by this
+ * job. The original audio (MediaAsset) is never read/write-modified by this
  * job beyond generating a short-lived signed GET URL to fetch its bytes.
  */
 @Processor(TRANSCRIPTION_QUEUE)
@@ -23,6 +23,7 @@ export class TranscriptionProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
     @Inject(TRANSCRIPTION_PROVIDER) private readonly transcription: TranscriptionProvider,
+    private readonly segmentation: SegmentationService,
   ) {
     super();
   }
@@ -60,6 +61,16 @@ export class TranscriptionProcessor extends WorkerHost {
           errorMessage: null,
         },
       });
+
+      // Segmentation (and the embedding jobs it enqueues) is a downstream
+      // pipeline stage: a failure here must never cause BullMQ to retry the
+      // transcription work that already succeeded (that would re-call the
+      // paid transcription API for no reason). Logged, not re-thrown.
+      try {
+        await this.segmentation.segmentMemorySource(source.id);
+      } catch (segmentationError) {
+        this.logger.warn(`Segmentation failed for MemorySource ${source.id}: ${String(segmentationError)}`);
+      }
     } catch (error) {
       this.logger.error(`Transcription failed for MemorySource ${source.id}: ${String(error)}`);
       await this.prisma.memorySource.update({
