@@ -1,6 +1,6 @@
 import { Processor, WorkerHost } from "@nestjs/bullmq";
 import type { Job } from "bullmq";
-import type { SegmentationService } from "./segmentation.service";
+import { SegmentationService } from "./segmentation.service";
 import { SEGMENTATION_QUEUE } from "./queue.constants";
 
 export type SegmentJobData = { memorySourceId: string };
