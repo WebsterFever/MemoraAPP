@@ -24,7 +24,7 @@ function makeTranscriptionProviderStub(): jest.Mocked<TranscriptionProvider> {
 }
 
 function makeSegmentationStub(): jest.Mocked<SegmentationService> {
-  return { segmentMemorySource: jest.fn().mockResolvedValue(undefined) } as never;
+  return { enqueueForMemorySource: jest.fn().mockResolvedValue(undefined) } as never;
 }
 
 function makeJob(memorySourceId: string): Job<TranscribeJobData> {
@@ -46,7 +46,7 @@ describe("TranscriptionProcessor", () => {
     processor = new TranscriptionProcessor(prisma as never, storage, transcriptionProvider, segmentation);
   });
 
-  it("triggers segmentation for the same MemorySource after a successful transcription", async () => {
+  it("enqueues segmentation for the same MemorySource after a successful transcription", async () => {
     prisma.memorySource.findUnique.mockResolvedValue({
       id: "source-1",
       mediaAsset: { storageKey: "k", mimeType: "audio/mp4" },
@@ -59,22 +59,22 @@ describe("TranscriptionProcessor", () => {
       where: { id: "source-1" },
       data: expect.objectContaining({ status: "TRANSCRIBED" }),
     });
-    expect(segmentation.segmentMemorySource).toHaveBeenCalledWith("source-1");
+    expect(segmentation.enqueueForMemorySource).toHaveBeenCalledWith("source-1");
   });
 
-  it("does not let a segmentation failure fail the (already-successful) transcription job", async () => {
+  it("does not let a segmentation-enqueue failure fail the (already-successful) transcription job", async () => {
     prisma.memorySource.findUnique.mockResolvedValue({
       id: "source-1",
       mediaAsset: { storageKey: "k", mimeType: "audio/mp4" },
     });
     transcriptionProvider.transcribe.mockResolvedValue({ rawTranscript: "Hello there.", language: "english" });
-    segmentation.segmentMemorySource.mockRejectedValue(new Error("segmentation blew up"));
+    segmentation.enqueueForMemorySource.mockRejectedValue(new Error("redis unavailable"));
 
     await expect(processor.process(makeJob("source-1"))).resolves.toBeUndefined();
 
     // The MemorySource was still correctly marked TRANSCRIBED — that work
-    // succeeded and must not be undone or retried just because the
-    // downstream segmentation stage failed.
+    // succeeded and must not be undone or retried just because enqueueing
+    // the downstream segmentation stage failed.
     expect(prisma.memorySource.update).toHaveBeenCalledWith({
       where: { id: "source-1" },
       data: expect.objectContaining({ status: "TRANSCRIBED" }),
@@ -90,7 +90,7 @@ describe("TranscriptionProcessor", () => {
 
     await expect(processor.process(makeJob("source-1"))).rejects.toThrow("provider down");
 
-    expect(segmentation.segmentMemorySource).not.toHaveBeenCalled();
+    expect(segmentation.enqueueForMemorySource).not.toHaveBeenCalled();
     expect(prisma.memorySource.update).toHaveBeenCalledWith({
       where: { id: "source-1" },
       data: { status: "FAILED", errorMessage: "provider down" },
@@ -101,6 +101,6 @@ describe("TranscriptionProcessor", () => {
     prisma.memorySource.findUnique.mockResolvedValue(null);
     await processor.process(makeJob("missing"));
     expect(transcriptionProvider.transcribe).not.toHaveBeenCalled();
-    expect(segmentation.segmentMemorySource).not.toHaveBeenCalled();
+    expect(segmentation.enqueueForMemorySource).not.toHaveBeenCalled();
   });
 });

@@ -69,19 +69,27 @@ export class EmbeddingProcessor extends WorkerHost {
       }
 
       const vectorLiteral = `[${vector.join(",")}]`;
+      // Guarded by status != EMBEDDED: if a concurrent duplicate job for
+      // this same chunk already committed a successful embedding first,
+      // this becomes a safe no-op instead of an unnecessary overwrite.
       await this.prisma.$executeRaw`
         UPDATE "MemoryChunk"
         SET "embedding" = ${vectorLiteral}::vector,
             "status" = 'EMBEDDED'::"MemoryChunkStatus",
             "errorMessage" = NULL,
             "updatedAt" = NOW()
-        WHERE "id" = ${chunkId}
+        WHERE "id" = ${chunkId} AND "status" != 'EMBEDDED'::"MemoryChunkStatus"
       `;
     } catch (error) {
       const safeMessage = sanitizeErrorMessage(error);
       this.logger.error(`Embedding failed for MemoryChunk ${chunkId}: ${safeMessage}`);
-      await this.prisma.memoryChunk.update({
-        where: { id: chunkId },
+      // Guarded the same way: a stale failure (e.g. this job's embed() call
+      // lost a race against a concurrent duplicate that already succeeded)
+      // must never downgrade an already-EMBEDDED chunk back to FAILED.
+      // updateMany (not update) because the guard needs a non-unique
+      // compound filter, not just the unique id.
+      await this.prisma.memoryChunk.updateMany({
+        where: { id: chunkId, status: { not: "EMBEDDED" } },
         data: { status: "FAILED", errorMessage: safeMessage },
       });
       // Re-throw so BullMQ applies the configured retry/backoff policy

@@ -7,10 +7,17 @@ function makePrismaStub() {
   return {
     memoryChunk: {
       findUnique: jest.fn(),
-      update: jest.fn().mockResolvedValue(undefined),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     $executeRaw: jest.fn().mockResolvedValue(1),
   };
+}
+
+/** Joins a mocked $executeRaw tagged-template call's SQL fragments, so tests
+ * can assert on the literal query text (e.g. the concurrency guard clause)
+ * without needing a real database. */
+function sqlTextOf(call: unknown[]): string {
+  return (call[0] as string[]).join("?");
 }
 
 function makeEmbeddingProviderStub(): jest.Mocked<EmbeddingProvider> {
@@ -75,7 +82,7 @@ describe("EmbeddingProcessor", () => {
     await processor.process(makeJob("chunk-1"));
     expect(embeddingProvider.embed).not.toHaveBeenCalled();
     expect(prisma.$executeRaw).not.toHaveBeenCalled();
-    expect(prisma.memoryChunk.update).not.toHaveBeenCalled();
+    expect(prisma.memoryChunk.updateMany).not.toHaveBeenCalled();
   });
 
   it("re-attempts a FAILED chunk (not a terminal state) and succeeds, storing the vector and marking EMBEDDED", async () => {
@@ -91,10 +98,10 @@ describe("EmbeddingProcessor", () => {
     // Tagged-template call: (stringsArray, vectorLiteral, chunkId)
     expect(call[1]).toBe(`[${vector.join(",")}]`);
     expect(call[2]).toBe("chunk-1");
-    expect(prisma.memoryChunk.update).not.toHaveBeenCalled();
+    expect(prisma.memoryChunk.updateMany).not.toHaveBeenCalled();
   });
 
-  it("processes a PENDING chunk successfully", async () => {
+  it("processes a PENDING chunk successfully, guarding the write so a concurrent duplicate can't clobber it", async () => {
     prisma.memoryChunk.findUnique.mockResolvedValue({ id: "chunk-2", text: "Mom's recipe", status: "PENDING" });
     const vector = fakeVector();
     embeddingProvider.embed.mockResolvedValue(vector);
@@ -102,6 +109,9 @@ describe("EmbeddingProcessor", () => {
     await processor.process(makeJob("chunk-2"));
 
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    const sql = sqlTextOf(prisma.$executeRaw.mock.calls[0]);
+    expect(sql).toContain(`"status" != 'EMBEDDED'`);
+    expect(sql).toContain(`"errorMessage" = NULL`);
   });
 
   it("marks the chunk FAILED with a sanitized message and rethrows when the provider fails", async () => {
@@ -111,8 +121,8 @@ describe("EmbeddingProcessor", () => {
     await expect(processor.process(makeJob("chunk-3"))).rejects.toThrow();
 
     expect(prisma.$executeRaw).not.toHaveBeenCalled();
-    expect(prisma.memoryChunk.update).toHaveBeenCalledWith({
-      where: { id: "chunk-3" },
+    expect(prisma.memoryChunk.updateMany).toHaveBeenCalledWith({
+      where: { id: "chunk-3", status: { not: "EMBEDDED" } },
       data: { status: "FAILED", errorMessage: "OpenAI rejected key [redacted]" },
     });
   });
@@ -126,8 +136,8 @@ describe("EmbeddingProcessor", () => {
     );
 
     expect(prisma.$executeRaw).not.toHaveBeenCalled();
-    expect(prisma.memoryChunk.update).toHaveBeenCalledWith({
-      where: { id: "chunk-4" },
+    expect(prisma.memoryChunk.updateMany).toHaveBeenCalledWith({
+      where: { id: "chunk-4", status: { not: "EMBEDDED" } },
       data: {
         status: "FAILED",
         errorMessage: `Refusing to store embedding with 512 dimensions (expected ${EMBEDDING_DIMENSIONS}).`,
@@ -148,5 +158,48 @@ describe("EmbeddingProcessor", () => {
 
     expect(embeddingProvider.embed).toHaveBeenCalledTimes(1);
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("a full failure-then-retry-success cycle clears errorMessage and sets EMBEDDED", async () => {
+    // Attempt 1: fails.
+    prisma.memoryChunk.findUnique.mockResolvedValueOnce({ id: "chunk-6", text: "hello", status: "PENDING" });
+    embeddingProvider.embed.mockRejectedValueOnce(new Error("temporary network error"));
+    await expect(processor.process(makeJob("chunk-6"))).rejects.toThrow("temporary network error");
+    expect(prisma.memoryChunk.updateMany).toHaveBeenCalledWith({
+      where: { id: "chunk-6", status: { not: "EMBEDDED" } },
+      data: { status: "FAILED", errorMessage: "temporary network error" },
+    });
+
+    // BullMQ retry: the chunk is now FAILED (not terminal), so the retried
+    // job re-attempts and this time succeeds.
+    prisma.memoryChunk.findUnique.mockResolvedValueOnce({ id: "chunk-6", text: "hello", status: "FAILED" });
+    const vector = fakeVector();
+    embeddingProvider.embed.mockResolvedValueOnce(vector);
+    await processor.process(makeJob("chunk-6"));
+
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    const sql = sqlTextOf(prisma.$executeRaw.mock.calls[0]);
+    // The success-path query unconditionally sets errorMessage = NULL and
+    // status = EMBEDDED — confirms a successful retry clears the prior
+    // failure rather than leaving stale FAILED state alongside a vector.
+    expect(sql).toContain(`"status" = 'EMBEDDED'`);
+    expect(sql).toContain(`"errorMessage" = NULL`);
+  });
+
+  it("a stale failure cannot overwrite a chunk another worker already marked EMBEDDED (concurrency guard)", async () => {
+    // Two workers both read the chunk as PENDING before either writes.
+    prisma.memoryChunk.findUnique.mockResolvedValue({ id: "chunk-7", text: "hello", status: "PENDING" });
+    // Worker A's embed() call fails *after* worker B's already succeeded —
+    // from this worker's point of view it still attempts the FAILED write,
+    // but the updateMany's own WHERE guard (status != EMBEDDED) is what
+    // actually protects the row in the real database; here we confirm the
+    // guard clause is present on every failure-path write, unconditionally.
+    embeddingProvider.embed.mockRejectedValue(new Error("lost the race"));
+
+    await expect(processor.process(makeJob("chunk-7"))).rejects.toThrow("lost the race");
+
+    expect(prisma.memoryChunk.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "chunk-7", status: { not: "EMBEDDED" } } }),
+    );
   });
 });

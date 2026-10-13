@@ -62,14 +62,16 @@ export class TranscriptionProcessor extends WorkerHost {
         },
       });
 
-      // Segmentation (and the embedding jobs it enqueues) is a downstream
-      // pipeline stage: a failure here must never cause BullMQ to retry the
-      // transcription work that already succeeded (that would re-call the
-      // paid transcription API for no reason). Logged, not re-thrown.
+      // Segmentation runs as its own retryable BullMQ stage (see
+      // SegmentationProcessor), never inline here — a transient failure
+      // there is retried by BullMQ independently and can never cause this
+      // transcription work (already successful, and expensive to redo) to
+      // be retried. Even enqueueing itself failing (e.g. Redis briefly
+      // unavailable) is only logged, not re-thrown, for the same reason.
       try {
-        await this.segmentation.segmentMemorySource(source.id);
-      } catch (segmentationError) {
-        this.logger.warn(`Segmentation failed for MemorySource ${source.id}: ${String(segmentationError)}`);
+        await this.segmentation.enqueueForMemorySource(source.id);
+      } catch (enqueueError) {
+        this.logger.warn(`Failed to enqueue segmentation for MemorySource ${source.id}: ${String(enqueueError)}`);
       }
     } catch (error) {
       this.logger.error(`Transcription failed for MemorySource ${source.id}: ${String(error)}`);

@@ -1,7 +1,11 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { InjectQueue } from "@nestjs/bullmq";
+import type { Queue } from "bullmq";
 import { PrismaService } from "../prisma/prisma.service";
 import { EmbeddingService } from "../embedding/embedding.service";
 import { chunkTranscript } from "./chunk-transcript";
+import { SEGMENTATION_QUEUE } from "./queue.constants";
+import type { SegmentJobData } from "./segmentation.processor";
 
 @Injectable()
 export class SegmentationService {
@@ -10,7 +14,25 @@ export class SegmentationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
+    @InjectQueue(SEGMENTATION_QUEUE) private readonly queue: Queue<SegmentJobData>,
   ) {}
+
+  /**
+   * Enqueues segmentation work for a MemorySource. Uses the MemorySource's
+   * own id as the BullMQ job id, so calling this more than once for the
+   * same source can never create a second concurrent segmentation job for
+   * it. This is the sole entrypoint TranscriptionProcessor calls after
+   * marking a MemorySource TRANSCRIBED — segmentation runs as its own
+   * retryable stage, never inline inside the transcription job, so a
+   * segmentation failure is retried by BullMQ without ever re-transcribing.
+   */
+  async enqueueForMemorySource(memorySourceId: string): Promise<void> {
+    await this.queue.add(
+      "segment",
+      { memorySourceId },
+      { jobId: memorySourceId, attempts: 3, backoff: { type: "exponential", delay: 10_000 } },
+    );
+  }
 
   /**
    * Splits a MemorySource's cleanedTranscript into MemoryChunk rows, then

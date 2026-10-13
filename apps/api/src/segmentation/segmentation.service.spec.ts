@@ -19,6 +19,10 @@ function makeEmbeddingServiceStub() {
   return { enqueueForChunk: jest.fn().mockResolvedValue(undefined) };
 }
 
+function makeQueueStub() {
+  return { add: jest.fn().mockResolvedValue(undefined) };
+}
+
 const SOURCE_ID = "source-1";
 const MEMORY_ID = "memory-1";
 const FAMILY_ID = "family-1";
@@ -43,12 +47,26 @@ function makeSource(cleanedTranscript: string | null, overrides: Partial<{ profi
 describe("SegmentationService", () => {
   let prisma: ReturnType<typeof makePrismaStub>;
   let embeddingService: ReturnType<typeof makeEmbeddingServiceStub>;
+  let queue: ReturnType<typeof makeQueueStub>;
   let service: SegmentationService;
 
   beforeEach(() => {
     prisma = makePrismaStub();
     embeddingService = makeEmbeddingServiceStub();
-    service = new SegmentationService(prisma as never, embeddingService as never);
+    queue = makeQueueStub();
+    service = new SegmentationService(prisma as never, embeddingService as never, queue as never);
+  });
+
+  describe("enqueueForMemorySource", () => {
+    it("enqueues a job keyed by the MemorySource id, so a duplicate call can never create a second concurrent segmentation job", async () => {
+      await service.enqueueForMemorySource("source-1");
+
+      expect(queue.add).toHaveBeenCalledWith(
+        "segment",
+        { memorySourceId: "source-1" },
+        expect.objectContaining({ jobId: "source-1", attempts: 3 }),
+      );
+    });
   });
 
   it("throws NotFoundException when the MemorySource does not exist", async () => {
@@ -178,5 +196,26 @@ describe("SegmentationService", () => {
       calls.map((call: [{ where: { memorySourceId_chunkIndex: { chunkIndex: number } } }]) => call[0].where.memorySourceId_chunkIndex.chunkIndex);
     const uniqueFirst = new Set(indexesPerRun(firstRunCalls));
     expect(uniqueFirst.size).toBe(firstRunCalls.length);
+  });
+
+  it("propagates an enqueue failure instead of swallowing it, so a PENDING chunk is never permanently stranded", async () => {
+    const text = "Short memory now.";
+    prisma.memorySource.findUnique.mockResolvedValue(makeSource(text));
+    prisma.memoryChunk.findMany.mockResolvedValue([{ id: "chunk-a" }]);
+    embeddingService.enqueueForChunk.mockRejectedValueOnce(new Error("redis unavailable"));
+
+    // segmentMemorySource must reject (not catch-and-log) so that when it
+    // runs inside SegmentationProcessor, BullMQ sees the job fail and
+    // retries it — re-querying PENDING chunks and re-attempting the
+    // enqueue, rather than the chunk sitting PENDING forever.
+    await expect(service.segmentMemorySource(SOURCE_ID)).rejects.toThrow("redis unavailable");
+
+    // Simulate the BullMQ retry: same still-PENDING chunk is found again
+    // and successfully enqueued this time.
+    embeddingService.enqueueForChunk.mockResolvedValueOnce(undefined);
+    await service.segmentMemorySource(SOURCE_ID);
+
+    expect(embeddingService.enqueueForChunk).toHaveBeenCalledWith("chunk-a");
+    expect(embeddingService.enqueueForChunk).toHaveBeenCalledTimes(2);
   });
 });
