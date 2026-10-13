@@ -135,3 +135,89 @@ lives in TanStack Query, full stop.
   Zod schemas shared with the backend where practical (via
   `packages/shared`/`packages/ai-schemas`) so a backend contract change is a
   type error on the client, not a runtime surprise.
+
+## 6. App interface localization (`shared/i18n/`, added Phase 6 planning)
+
+This section covers **app chrome localization only** — navigation, labels,
+buttons, validation messages, settings. It is a distinct concern from the
+multilingual *memory content* architecture (original recording language,
+cross-language retrieval, AI answer language), which lives in doc 05 §6 —
+see that section for how the three language dimensions (app interface,
+original memory, AI conversation) relate to each other.
+
+### Library choice
+
+`i18next` + `react-i18next`, with `expo-localization` for device-locale
+detection. This is the standard, actively-maintained combination for
+Expo/React Native — no framework-specific lock-in, broad ecosystem support
+(pluralization, interpolation, namespacing) that a hand-rolled solution
+would have to reinvent, and the preview/Phase 0 scaffold already reserved
+`shared/i18n/` for exactly this.
+
+### Initial interface languages
+
+```
+en  — English   (default/fallback)
+fr  — French
+ht  — Haitian Creole
+es  — Spanish
+pt  — Portuguese
+it  — Italian
+de  — German
+```
+
+**Scope honesty**: this list is the *interface* language set (navigation,
+buttons, labels) — it is not a claim about transcription/translation/AI
+answer quality in every one of these languages. Per the executive summary's
+own risk #1/#2, embedding and generation quality (especially for Haitian
+Creole, a low-resource language) must be empirically verified per language,
+not assumed from the interface being translated. Interface localization and
+AI-quality verification are tracked as separate checkpoints (doc 05 §7,
+items 5 and 6) precisely so one is never used to imply the other.
+
+### Extensibility — adding a language later must not require a rewrite
+
+```
+shared/i18n/
+  index.ts              # i18next init, language-detection + persistence wiring
+  locales/
+    en/common.json
+    en/validation.json
+    fr/common.json
+    fr/validation.json
+    ht/common.json
+    ...
+```
+
+Namespaced JSON resource files per language, loaded via i18next's resource
+bundles. Adding a new language is purely additive: a new `locales/<code>/`
+directory plus registering the code in one config list — no changes to any
+screen component, since screens only ever call `t("namespace:key")` and
+never hardcode strings (this is the enforcement rule for all *new* screens
+going forward; it does not retroactively rewrite already-shipped Phase 0–5
+screens in this same change).
+
+### Settings → Language
+
+A dedicated settings screen lets the user pick their app interface language
+from the supported list. Selecting a language:
+
+- Immediately re-renders all currently mounted screens (i18next's React
+  bindings re-render subscribed components on language change — no app
+  restart required).
+- Persists the choice (`expo-secure-store` or `AsyncStorage` — no
+  sensitivity requirement here, unlike auth tokens, so `AsyncStorage` is
+  sufficient) so it survives an app restart.
+- Updates date/time formatting where locale-sensitive (via a thin wrapper
+  around `Intl.DateTimeFormat`, keyed off the same language code — not a
+  second, separate locale setting).
+
+### Automatic detection with override
+
+On first launch (no persisted preference yet): read the device locale via
+`expo-localization`, select it if it's in the supported list, otherwise
+default to English. This is a one-time default, never a silent override of
+an explicit later choice — once a user has picked a language in Settings
+(or implicitly accepted the detected one, which is still recorded as "the
+current preference," not re-detected on every launch), device-locale
+detection is never consulted again.

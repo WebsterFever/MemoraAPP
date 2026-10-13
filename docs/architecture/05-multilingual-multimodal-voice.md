@@ -171,3 +171,79 @@ explicitly not before the text-based RAG pipeline is proven in production):
 - Latency budget work (streaming STT, partial-response generation, TTS
   streaming) is an optimization problem to solve *after* correctness, not a
   reason to skip the citation-validation or evaluation stages.
+
+## 6. Three independent language dimensions (added Phase 6 planning)
+
+Multilingual support is not one setting — it's three independent axes that
+can each differ from the other two, and the architecture must support every
+combination without forcing them to match:
+
+| Dimension | Example value | Where it lives | Scope |
+|---|---|---|---|
+| **App interface language** | English | `User`/device preference, persisted locally (see doc 09 §6) | Controls navigation, buttons, labels, validation messages — UI chrome only, never memory content |
+| **Original memory language** | Haitian Creole | `MemorySource.detectedLanguage`, per-source (§2 above) | Immutable per recording — this is the *source of truth* language, never changed to match a reader's preference |
+| **AI conversation language** | French | Per-conversation (or per-message) user selection, defaults to the app interface language but is independently overridable | Controls what language the Memory Conversation AI answers in — independent of both the app chrome language and the memory's original language |
+
+**Worked example matching the brief**: a user's app interface is set to
+English, they ask a question in French ("Qu'est-ce que ma mère disait à
+propos de son enfance?"), and the answer is grounded in a Haitian Creole
+memory — three different languages in one interaction, all handled
+correctly:
+
+1. Query language is detected per-message (same detection mechanism as
+   `MemorySource.detectedLanguage` ingest-time detection, §2), independent of
+   the app's current interface language setting — a user whose app is in
+   English can still type a question in French and get a French answer.
+2. Retrieval is language-agnostic (§1 principle 3: embeddings are computed
+   on original-language text, and the multilingual embedding space puts a
+   French question and a semantically matching Haitian Creole chunk close
+   together) — no translate-then-embed step, no requirement that the
+   question's language match the memory's language.
+3. Generation is explicitly instructed to answer in the **detected language
+   of the incoming question** (§1 principle 5) — which may differ from both
+   the app's interface language and the source memory's language.
+4. The citation object still carries the original-language quote verbatim
+   (§1 principle 5) — a French answer grounded in a Creole memory still
+   shows the Creole source text in the citation, never silently
+   retranslated and presented as if it were the original recording.
+
+**Default chain, override at every level**: AI conversation language
+defaults to the app interface language, which defaults to auto-detected
+device language, which defaults to English if unsupported (doc 09 §6) — but
+a user can override any one of the three independently at any time, and
+overriding one never changes the others.
+
+## 7. Implementation checkpoints for full multilingual support
+
+This is a planning note, not a schedule change — it does **not** alter the
+Phase 0–15 roadmap in `00-executive-summary.md`. It breaks the multilingual
+work already implied by that roadmap into separable, independently
+shippable checkpoints so it isn't built as one undifferentiated effort:
+
+1. **Multilingual data and AI architecture** — this document; mostly already
+   designed (per-source language detection, `MemoryTranslation`, three
+   independent language dimensions above). Maps onto the existing async
+   pipeline (doc 06) and Phase 6+ RAG work.
+2. **Semantic retrieval** — cross-language vector search over `MemoryChunk`
+   (current Phase 6 work; see the retrieval design in the next section of
+   this conversation's working notes, pending separate approval).
+3. **Grounded AI responses** — intent classification, confidence gate,
+   citation validation, answer-language-matches-question-language (doc 04
+   §3, §6 of this doc) — depends on (2).
+4. **Mobile chat integration** — replace `person-chat.tsx`'s temporary local
+   keyword matching with calls to the real retrieval/generation API (depends
+   on (2) and (3)); add conversation-language selection to the chat UI.
+5. **App localization and language settings** — `i18next`/`react-i18next`,
+   `shared/i18n/`, Settings → Language, device-language auto-detection (doc
+   09 §7) — independent of (2)–(4); this is UI chrome, not AI/content, and
+   can be built in parallel with the retrieval work.
+6. **Multilingual end-to-end testing** — a real recording in each initially
+   supported language (§"Initial interface languages" in doc 09 §6),
+   cross-language question/answer pairs per §6 above, and interface-language
+   switching — gated on (2)–(5) all being individually proven first.
+
+Each checkpoint should be proposed, implemented, and verified separately —
+consistent with how Phase 6 itself has been built in small, independently
+tested, independently approved slices (schema → provider →
+segmentation → pipeline wiring → reliability hardening), not as one large
+multilingual rewrite.
