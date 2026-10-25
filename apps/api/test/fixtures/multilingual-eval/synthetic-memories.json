@@ -1,0 +1,130 @@
+{
+  "description": "Synthetic, fictional evaluation dataset for Phase 6 grounded-answer-generation testing. Every person, place, and story in this file is invented for testing purposes only. Nothing here may ever be inserted into a real family's data, a real MemoryProfile, or any production database. See README.md in this directory for usage rules.",
+  "memories": [
+    {
+      "id": "mem-ht-recipe-01",
+      "language": "ht",
+      "fictionalProfileName": "Tonton Pierre (fictional test profile)",
+      "topic": "recipe",
+      "text": "Lè gen gwo okazyon nan fanmi an, se mwen ki te toujou fè diri djon djon ak kribich pou tout moun. Fòk ou fè chanpiyon an bouyi byen lontan pou dlo a vin tou nwa anvan ou mete diri a. Manman m te montre m resèt sa a lè m te gen double laj pitit gason m kounye a.",
+      "englishGloss": "For big family occasions, I was always the one who made black mushroom rice with crayfish for everyone. You have to boil the mushrooms a long time so the water turns completely black before adding the rice. My mother taught me this recipe when I was twice my son's current age."
+    },
+    {
+      "id": "mem-fr-childhood-01",
+      "language": "fr",
+      "fictionalProfileName": "Mamie Odette (fictional test profile)",
+      "topic": "childhood",
+      "text": "Quand j'étais petite, on jouait aux billes dans la cour de l'immeuble à Lyon tous les jeudis après l'école. Mon frère trichait toujours en cachant ses plus belles billes dans sa poche avant de commencer la partie, et personne n'arrivait jamais à le prendre sur le fait.",
+      "englishGloss": "When I was little, we played marbles in the courtyard of the building in Lyon every Thursday after school. My brother always cheated by hiding his best marbles in his pocket before the game started, and no one ever managed to catch him."
+    },
+    {
+      "id": "mem-en-advice-01",
+      "language": "en",
+      "fictionalProfileName": "Grandpa Walter (fictional test profile)",
+      "topic": "life-advice",
+      "text": "The best advice I ever gave your father about fixing cars was: never tighten a bolt all the way on the first pass. Go around the whole engine twice, a little at a time, or you'll warp something and spend the whole weekend redoing the job. Patience saves you more time than it costs.",
+      "englishGloss": null
+    },
+    {
+      "id": "mem-ht-history-01",
+      "language": "ht",
+      "fictionalProfileName": "Tonton Pierre (fictional test profile)",
+      "topic": "family-history",
+      "text": "Fanmi nou te viv Jakmèl anvan grandpapa m deside demenaje al Pòtoprens pou chèche travay nan pò a. Li te yon pechè pwason pandan trant lane anvan sa, men lè pòsson yo te vin pi ra sou kòt Jakmèl, li te oblije chanje lavi li nèt.",
+      "englishGloss": "Our family lived in Jacmel before my grandfather decided to move to Port-au-Prince to look for work at the port. He had been a fisherman for thirty years before that, but when fish became scarce along the Jacmel coast, he had to completely change his life."
+    },
+    {
+      "id": "mem-fr-place-01",
+      "language": "fr",
+      "fictionalProfileName": "Mamie Odette (fictional test profile)",
+      "topic": "place",
+      "text": "La maison de pierre en Provence avait un figuier immense devant la porte d'entrée, planté par mon grand-père le jour de mon baptême. En été, les figues tombaient tellement qu'on en ramassait des paniers entiers chaque matin avant que les guêpes n'arrivent.",
+      "englishGloss": "The stone house in Provence had an enormous fig tree in front of the entrance door, planted by my grandfather on the day of my baptism. In summer, so many figs fell that we collected whole baskets every morning before the wasps arrived."
+    }
+  ],
+  "questions": [
+    {
+      "id": "q-same-ht-01",
+      "type": "same-language",
+      "conversationLanguage": "ht",
+      "question": "Ki manje espesyal li te konn fè pou gwo okazyon?",
+      "expectedSupportingMemoryIds": ["mem-ht-recipe-01"]
+    },
+    {
+      "id": "q-same-fr-01",
+      "type": "same-language",
+      "conversationLanguage": "fr",
+      "question": "À quoi jouait-elle dans la cour quand elle était petite ?",
+      "expectedSupportingMemoryIds": ["mem-fr-childhood-01"]
+    },
+    {
+      "id": "q-same-en-01",
+      "type": "same-language",
+      "conversationLanguage": "en",
+      "question": "What advice did he give about fixing cars?",
+      "expectedSupportingMemoryIds": ["mem-en-advice-01"]
+    },
+    {
+      "id": "q-same-ht-02",
+      "type": "same-language",
+      "conversationLanguage": "ht",
+      "question": "Poukisa grandpapa a te kite Jakmèl pou l al Pòtoprens?",
+      "expectedSupportingMemoryIds": ["mem-ht-history-01"]
+    },
+    {
+      "id": "q-same-fr-02",
+      "type": "same-language",
+      "conversationLanguage": "fr",
+      "question": "Comment était la maison en Provence ?",
+      "expectedSupportingMemoryIds": ["mem-fr-place-01"]
+    },
+    {
+      "id": "q-cross-en-01",
+      "type": "cross-language",
+      "conversationLanguage": "en",
+      "question": "What special dish did he used to cook for important family occasions?",
+      "expectedSupportingMemoryIds": ["mem-ht-recipe-01"],
+      "notes": "Memory is recorded in Haitian Creole; question and expected answer language are English. Tests that retrieval matches across languages and that the citation still quotes the original Creole text verbatim."
+    },
+    {
+      "id": "q-cross-fr-01",
+      "type": "cross-language",
+      "conversationLanguage": "fr",
+      "question": "Quel conseil donnait-il à propos de la patience ?",
+      "expectedSupportingMemoryIds": ["mem-en-advice-01"],
+      "notes": "Memory is recorded in English; question and expected answer language are French."
+    },
+    {
+      "id": "q-cross-en-02",
+      "type": "cross-language",
+      "conversationLanguage": "en",
+      "question": "What was the house in Provence like?",
+      "expectedSupportingMemoryIds": ["mem-fr-place-01"],
+      "notes": "Memory is recorded in French; question and expected answer language are English."
+    },
+    {
+      "id": "q-unrelated-en-01",
+      "type": "unrelated",
+      "conversationLanguage": "en",
+      "question": "What was her favorite song to sing at weddings?",
+      "expectedSupportingMemoryIds": [],
+      "notes": "No memory in this fixture mentions singing or weddings. Expected behavior: refusal."
+    },
+    {
+      "id": "q-unrelated-fr-01",
+      "type": "unrelated",
+      "conversationLanguage": "fr",
+      "question": "Quel métier a-t-il exercé à Paris ?",
+      "expectedSupportingMemoryIds": [],
+      "notes": "No memory mentions Paris or that profession. Expected behavior: refusal, even though Jacmel/Port-au-Prince professions exist in a different memory — tests that the model doesn't substitute an unrelated fact for a missing one."
+    },
+    {
+      "id": "q-unrelated-ht-01",
+      "type": "unrelated",
+      "conversationLanguage": "ht",
+      "question": "Ki koulè machin li te genyen?",
+      "expectedSupportingMemoryIds": [],
+      "notes": "No memory mentions a car's color. Expected behavior: refusal."
+    }
+  ]
+}
