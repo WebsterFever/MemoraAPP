@@ -9,6 +9,7 @@ import { MemoriesModule } from "./memories/memories.module";
 import { MediaModule } from "./media/media.module";
 import { QueueModule } from "./queue/queue.module";
 import { TranscriptionModule } from "./transcription/transcription.module";
+import { AnswersModule } from "./answers/answers.module";
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { TranscriptionModule } from "./transcription/transcription.module";
     QueueModule,
     MediaModule,
     TranscriptionModule,
+    AnswersModule,
   ],
 })
 export class AppModule {}

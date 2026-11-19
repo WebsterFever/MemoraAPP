@@ -10,6 +10,29 @@ export type Memory = { id: string; familyId: string; profileId?: string; title: 
 export type MemoryProfile = { id: string; familyId: string; displayName: string; relationship?: string; preferredLanguage: string; spokenLanguages: string[]; biography?: string; status: string };
 export type MediaAsset = { id: string; familyId: string; memoryId: string; uploadedByUserId: string; type: 'AUDIO'; storageProvider: 'S3'; mimeType: string; sizeBytes?: number; durationMs?: number; status: 'PENDING' | 'READY' | 'FAILED'; createdAt: string; updatedAt: string };
 export type CreateMediaUploadResponse = { mediaAssetId: string; uploadUrl: string; storageKey: string };
+export type AskCitation = { chunkId: string; memoryId: string; memorySourceId: string; quotedText: string };
+export type AskAnswer = {
+  refused: boolean;
+  refusalReason: string | null;
+  answer: string | null;
+  citations: AskCitation[];
+  conversationLanguage: string;
+  isGenerated: true;
+};
+
+// Carries the HTTP status alongside the message so callers can special-case
+// specific statuses (e.g. 429 rate-limited) instead of pattern-matching on
+// server-generated text, while still behaving like a plain Error for every
+// existing `catch (e) { setError(e.message) }` call site.
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => ({}));
@@ -18,7 +41,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
       typeof data === 'object' && data !== null && 'message' in data
         ? String((data as { message?: unknown }).message || 'Something went wrong')
         : 'Something went wrong';
-    throw new Error(message);
+    throw new ApiError(message, response.status);
   }
   return data as T;
 }
@@ -135,4 +158,10 @@ export const api = {
     request<{ url: string }>(`/media/${mediaAssetId}/playback-url`, {}, token),
   deleteMedia: (token: string, mediaAssetId: string) =>
     request<{ deleted: boolean }>(`/media/${mediaAssetId}`, { method: 'DELETE' }, token),
+  ask: (token: string, familyId: string, profileId: string, question: string, conversationLanguage?: string) =>
+    request<AskAnswer>(
+      `/families/${familyId}/profiles/${profileId}/ask`,
+      { method: 'POST', body: JSON.stringify({ question, conversationLanguage }) },
+      token,
+    ),
 };

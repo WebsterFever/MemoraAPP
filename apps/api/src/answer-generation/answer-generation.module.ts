@@ -5,10 +5,7 @@ import { AnswerGenerationService } from "./answer-generation.service";
 import { LLM_PROVIDER } from "./llm-provider";
 import { OpenAiLlmService } from "./openai-llm.service";
 
-/**
- * Not yet imported anywhere: no controller/consumer exists until the mobile
- * chat integration checkpoint.
- */
+/** Consumed by AnswersModule (POST /families/:familyId/profiles/:profileId/ask). */
 @Module({
   imports: [ConfigModule, RetrievalModule],
   providers: [{ provide: LLM_PROVIDER, useClass: OpenAiLlmService }, AnswerGenerationService],

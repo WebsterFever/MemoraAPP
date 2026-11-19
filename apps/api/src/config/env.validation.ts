@@ -20,6 +20,11 @@ export const envSchema = z.object({
   // an OpenAI key is configured. TranscriptionService checks this itself and
   // fails only the specific transcription job, not the whole app.
   OPENAI_API_KEY: z.string().optional(),
+  // Phase 6: rate limiting for POST /families/:familyId/profiles/:profileId/ask
+  // (the AI endpoint). Defaulted so the API boots without any extra config;
+  // override per-environment to tune cost/abuse tradeoffs.
+  ASK_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+  ASK_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
 });
 
 export type Env = z.infer<typeof envSchema>;
