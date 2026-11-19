@@ -22,6 +22,7 @@ export default function PersonChat() {
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [sending, setSending] = useState(false);
   const [conversationLanguage, setConversationLanguage] = useState<SupportedLanguage>(DEFAULT_LANGUAGE);
   const [languagePickerVisible, setLanguagePickerVisible] = useState(false);
@@ -46,6 +47,9 @@ export default function PersonChat() {
     if (!token || !familyId) return;
     try {
       setMemories(await api.memories(token, familyId));
+      setLoadError(false);
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -66,10 +70,15 @@ export default function PersonChat() {
     if (!token || !familyId || !profileId || languageInitialized.current) return;
     languageInitialized.current = true;
     void (async () => {
-      const profiles = await api.profiles(token, familyId);
-      const profile = profiles.find(p => p.id === profileId);
-      if (profile && isSupportedLanguage(profile.preferredLanguage)) {
-        setConversationLanguage(profile.preferredLanguage);
+      try {
+        const profiles = await api.profiles(token, familyId);
+        const profile = profiles.find(p => p.id === profileId);
+        if (profile && isSupportedLanguage(profile.preferredLanguage)) {
+          setConversationLanguage(profile.preferredLanguage);
+        }
+      } catch {
+        // Keep the default language if the profile request fails.
+        // Chat remains usable and the user can choose a language manually.
       }
     })();
   }, [token, familyId, profileId]);
@@ -151,6 +160,19 @@ export default function PersonChat() {
   }, [playbackUrl, playerStatus.isLoaded, player]);
 
   if (!ready || loading) return <View style={s.loading}><ActivityIndicator /></View>;
+
+  if (loadError) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <View style={s.loadError}>
+          <Text style={s.bubbleText}>Couldn't load memories. Check your connection and try again.</Text>
+          <Pressable style={s.addMemory} onPress={() => { setLoading(true); void load(); }}>
+            <Text style={s.addMemoryText}>Retry</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={s.safe}>
@@ -284,7 +306,7 @@ export default function PersonChat() {
 }
 
 const s = StyleSheet.create({
-  loading:{flex:1,justifyContent:'center'},safe:{flex:1,backgroundColor:'#EFEAE2'},flex:{flex:1},
+  loading:{flex:1,justifyContent:'center'},loadError:{flex:1,justifyContent:'center',alignItems:'center',padding:24,gap:16},safe:{flex:1,backgroundColor:'#EFEAE2'},flex:{flex:1},
   header:{height:70,backgroundColor:'#F7F3EC',paddingHorizontal:14,flexDirection:'row',alignItems:'center',gap:10,borderBottomWidth:1,borderBottomColor:'#DDD3CA'},
   back:{fontSize:36,color:'#5D493B'},avatar:{width:44,height:44,borderRadius:22,backgroundColor:'#E2D4C8',alignItems:'center',justifyContent:'center'},initial:{fontSize:19,fontWeight:'900',color:'#5D493B'},headerText:{flex:1},name:{fontSize:18,fontWeight:'900',color:'#211B17'},status:{fontSize:12,color:'#81736A'},
   languagePill:{paddingHorizontal:10,paddingVertical:6,borderRadius:12,backgroundColor:'#E2D4C8'},languagePillText:{fontSize:12,fontWeight:'900',color:'#5D493B'},
